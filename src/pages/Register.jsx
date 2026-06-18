@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
+import { Link, useNavigate } from "react-router-dom";
+import { apiRequest, authStorage } from "../api";
 
 function Register() {
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
 
  const [formData, setFormData] = useState({
@@ -34,25 +37,17 @@ function Register() {
   e.preventDefault();
 
   try {
-    const response = await fetch(
-      "http://localhost:5000/api/auth/register",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      }
-    );
-
-    const data = await response.json();
+    const data = await apiRequest("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(formData),
+    });
 
     if (data.success) {
       alert("Registration Successful");
 
-      localStorage.setItem("token", data.token);
+      authStorage.setSession(data.token, data.user);
 
-      console.log(data.user);
+      navigate(data.user.role === "admin" ? "/admin" : "/employee");
     } else {
       alert(data.message);
     }
@@ -577,7 +572,7 @@ function Register() {
 
   <div className="login-link">
     Already have an account?{" "}
-    <a href="/login">Login</a>
+    <Link to="/login">Login</Link>
   </div>
 
 </form>

@@ -5,6 +5,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import About from './pages/About'
 import Careers from './pages/Careers'
 import Contact from './pages/Contact'
+import EmployeeDashboard from './pages/EmployeeDashboard'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -32,6 +33,7 @@ function App() {
           <Route path="/login" element={<Login />} />
         </Route>
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/employee" element={<EmployeeDashboard />} />
       </Routes>
     </BrowserRouter>
   )

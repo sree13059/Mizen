@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { apiRequest, authStorage } from "../api";
 
 function Login() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
+    role: "employee",
     username: "",
     password: "",
   });
 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (event) => {
     setForm((current) => ({
@@ -20,19 +23,24 @@ function Login() {
     setError("");
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    setError("");
+    setLoading(true);
 
-    if (
-      form.username === "admin" &&
-      form.password === "admin123"
-    ) {
-      localStorage.setItem("mizenAdminLoggedIn", "true");
-      navigate("/admin");
-      return;
+    try {
+      const data = await apiRequest("/auth/login", {
+        method: "POST",
+        body: JSON.stringify(form),
+      });
+
+      authStorage.setSession(data.token, data.user);
+      navigate(data.user.role === "admin" ? "/admin" : "/employee");
+    } catch (err) {
+      setError(err.message || "Invalid username or password");
+    } finally {
+      setLoading(false);
     }
-
-    setError("Invalid username or password");
   };
 
   return (
@@ -159,6 +167,23 @@ function Login() {
           transition:.3s;
         }
 
+        .input-group select{
+          width:100%;
+          height:55px;
+          border:1px solid #dbe4ee;
+          border-radius:12px;
+          padding:0 15px;
+          background:#fff;
+          color:#17436f;
+          transition:.3s;
+        }
+
+        .input-group select:focus{
+          outline:none;
+          border-color:#6fb653;
+          box-shadow:0 0 0 4px rgba(111,182,83,.15);
+        }
+
         .input-group input:focus{
           outline:none;
           border-color:#6fb653;
@@ -199,6 +224,12 @@ function Login() {
         .login-btn:hover{
           transform:translateY(-3px);
           box-shadow:0 12px 25px rgba(23,67,111,.25);
+        }
+
+        .login-btn:disabled{
+          cursor:not-allowed;
+          opacity:.72;
+          transform:none;
         }
 
         .auth-error{
@@ -270,13 +301,26 @@ function Login() {
                 <form onSubmit={handleSubmit}>
 
                   <div className="input-group">
+                    <label>Login As</label>
+                    <select
+                      name="role"
+                      value={form.role}
+                      onChange={handleChange}
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+
+                  <div className="input-group">
                     <label>Username</label>
                     <input
                       type="text"
                       name="username"
-                      placeholder="Enter Username"
+                      placeholder="Email, employee ID, or name"
                       value={form.username}
                       onChange={handleChange}
+                      required
                     />
                   </div>
 
@@ -293,6 +337,7 @@ function Login() {
                         placeholder="Enter Password"
                         value={form.password}
                         onChange={handleChange}
+                        required
                       />
                     </div>
 
@@ -318,8 +363,9 @@ function Login() {
                   <button
                     type="submit"
                     className="login-btn"
+                    disabled={loading}
                   >
-                    Login
+                    {loading ? "Logging in..." : "Login"}
                   </button>
 
                   <div className="register-link">

@@ -1,10 +1,44 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { apiRequest } from '../api'
 import PageHero from '../components/PageHero'
 import { services } from '../content'
 
 function ServiceDetail() {
   const { slug } = useParams()
-  const service = services.find((item) => item.slug === slug)
+  const fallbackService = services.find((item) => item.slug === slug)
+  const [service, setService] = useState(fallbackService)
+
+  useEffect(() => {
+    let isActive = true
+
+    apiRequest('/services')
+      .then((data) => {
+        const apiService = data.services?.find((item) => item.slug === slug)
+        if (isActive && apiService) {
+          setService({
+            ...apiService,
+            detailPage: fallbackService?.detailPage || {
+              title: `${apiService.title} for practical business growth.`,
+              summary: apiService.front || apiService.back,
+              promise: apiService.back || apiService.front,
+              outcomes: apiService.details?.length ? apiService.details.slice(0, 3) : ['Clear scope', 'Reliable delivery', 'Responsive support'],
+              deliverables: apiService.details?.length ? apiService.details : ['Planning', 'Design and build', 'Testing and support'],
+              process: ['Understand the requirement', 'Plan the service delivery', 'Build and review', 'Launch and improve'],
+            },
+          })
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setService(fallbackService)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [fallbackService, slug])
 
   if (!service) {
     return (

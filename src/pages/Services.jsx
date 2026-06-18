@@ -1,8 +1,32 @@
+import { useEffect, useState } from 'react'
+import { apiRequest } from '../api'
 import FlipCard from '../components/FlipCard'
 import PageHero from '../components/PageHero'
 import { images, processSteps, services } from '../content'
 
 function Services() {
+  const [managedServices, setManagedServices] = useState(services)
+
+  useEffect(() => {
+    let isActive = true
+
+    apiRequest('/services')
+      .then((data) => {
+        if (isActive && data.services?.length) {
+          setManagedServices(data.services)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setManagedServices(services)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
   return (
     <main>
       <PageHero
@@ -22,7 +46,7 @@ function Services() {
           </p>
         </div>
         <div className="flip-grid">
-          {services.map((service) => (
+          {managedServices.map((service) => (
             <FlipCard key={service.title} {...service} />
           ))}
         </div>

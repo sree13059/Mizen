@@ -1,9 +1,33 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { apiRequest } from '../api'
 import FlipCard from '../components/FlipCard'
 import TestimonialCard from '../components/TestimonialCard'
 import { images, services, strengths, testimonials } from '../content'
 
 function Home() {
+  const [managedServices, setManagedServices] = useState(services)
+
+  useEffect(() => {
+    let isActive = true
+
+    apiRequest('/services')
+      .then((data) => {
+        if (isActive && data.services?.length) {
+          setManagedServices(data.services)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setManagedServices(services)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
   return (
     <main>
       <section className="home-hero" >
@@ -93,7 +117,7 @@ function Home() {
           </p>
         </div>
         <div className="flip-grid">
-          {services.slice(0, 4).map((service) => (
+          {managedServices.slice(0, 4).map((service) => (
             <FlipCard key={service.title} {...service} />
           ))}
         </div>
