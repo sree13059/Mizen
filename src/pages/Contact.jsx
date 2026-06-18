@@ -50,13 +50,13 @@ function Contact() {
         <div className="contact-info reveal delay-1">
           <article>
             <span>Mail</span>
-            <a href="mailto:info@mizentechsolutions.com">
-              info@mizentechsolutions.com
+            <a href="mailto:Mizentechsolutions@gmail.com">
+              Mizentechsolutions@gmail.com
             </a>
           </article>
           <article>
             <span>Phone</span>
-            <a href="tel:+919999999999">+91 77958 11101</a>
+            <a href="tel:+919480949103">+91 94809 49103</a>
           </article>
           <article>
             <span>Location</span>

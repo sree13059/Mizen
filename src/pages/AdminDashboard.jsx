@@ -87,7 +87,7 @@ function AdminDashboard() {
     skills: '',
     openings: 1,
     description: '',
-    applicationEmail: 'careers@mizentechsolutions.com',
+    applicationEmail: 'Mizentechsolutions@gmail.com',
   })
   const [projectForm, setProjectForm] = useState({
     name: '',
@@ -100,8 +100,8 @@ function AdminDashboard() {
   })
   const [companyForm, setCompanyForm] = useState({
     name: 'Mizen Tech Solutions',
-    email: 'info@mizentechsolutions.com',
-    phone: '',
+    email: 'Mizentechsolutions@gmail.com',
+    phone: '+91 94809 49103',
     address: '',
     website: '',
     industry: 'Technology Services',
@@ -461,7 +461,7 @@ function AdminDashboard() {
           skills: '',
           openings: 1,
           description: '',
-          applicationEmail: 'careers@mizentechsolutions.com',
+          applicationEmail: 'Mizentechsolutions@gmail.com',
         })
       await loadAdminData()
       setActiveView('jobs')
@@ -1007,7 +1007,7 @@ function AdminDashboard() {
               <p>{company?.description || companyForm.description || 'Add company details to show here.'}</p>
               <div>
                 <span>{company?.email || companyForm.email}</span>
-                <span>{company?.phone || companyForm.phone || 'Phone not added'}</span>
+                <span>{company?.phone || companyForm.phone || '+91 94809 49103'}</span>
                 <span>{company?.industry || companyForm.industry}</span>
               </div>
             </article>

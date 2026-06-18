@@ -37,8 +37,8 @@ function Footer() {
 
         <div>
           <h3>Contact</h3>
-          <a href="mailto:Mizen@gmail.com">Mizen@gmail.com</a>
-          <a href="tel:+917795811110">+91 77958 11101</a>
+          <a href="mailto:Mizentechsolutions@gmail.com">Mizentechsolutions@gmail.com</a>
+          <a href="tel:+919480949103">+91 94809 49103</a>
 
           <div className="footer-location">
             <i className="bi bi-geo-alt-fill" aria-hidden="true"></i>

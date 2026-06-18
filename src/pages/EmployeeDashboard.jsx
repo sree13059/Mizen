@@ -549,8 +549,8 @@ function EmployeeDashboard() {
             <h3>{company?.name || 'Mizen Tech Solutions'}</h3>
             <p>{company?.description || 'Company details will appear here after admin updates them.'}</p>
             <div>
-              <span>{company?.email || 'info@mizentechsolutions.com'}</span>
-              <span>{company?.phone || 'Phone not added'}</span>
+              <span>{company?.email || 'Mizentechsolutions@gmail.com'}</span>
+              <span>{company?.phone || '+91 94809 49103'}</span>
               <span>{company?.website || 'Website not added'}</span>
             </div>
           </article>
