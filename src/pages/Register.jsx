@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { useSearchParams } from "react-router-dom";
 import { apiRequest } from "../api";
@@ -26,8 +26,18 @@ const readFileAsDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
+const getPhoneDigits = (value) => {
+  if (value.trim().startsWith("+91")) {
+    return value.replace(/\D/g, "").slice(2);
+  }
+
+  const digits = value.replace(/\D/g, "");
+  return digits;
+};
+
 function Register() {
   const [searchParams] = useSearchParams();
+  const resumeInputRef = useRef(null);
   const [jobs, setJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [formData, setFormData] = useState(emptyApplication);
@@ -39,25 +49,37 @@ function Register() {
 
     apiRequest("/jobs")
       .then((data) => {
-        if (isActive && data.jobs?.length) {
+        if (isActive) {
+          const availableJobs = data.jobs?.length ? data.jobs : fallbackJobs;
           const requestedJobId = searchParams.get("jobId");
           const requestedJobTitle = searchParams.get("jobTitle");
           const selectedJob =
-            data.jobs.find((job) => job._id === requestedJobId) ||
-            data.jobs.find((job) => job.title === requestedJobTitle) ||
-            data.jobs[0];
+            availableJobs.find((job) => job._id === requestedJobId) ||
+            availableJobs.find((job) => job.title === requestedJobTitle);
 
-          setJobs(data.jobs);
-          setFormData((current) => ({
-            ...current,
-            jobId: selectedJob?._id || "",
-            jobTitle: selectedJob?.title || current.jobTitle,
-          }));
+          setJobs(availableJobs);
+          if (selectedJob) {
+            setFormData((current) => ({
+              ...current,
+              jobId: selectedJob._id || selectedJob.title,
+              jobTitle: selectedJob.title || current.jobTitle,
+            }));
+          }
         }
       })
       .catch(() => {
         if (isActive) {
+          const requestedJobTitle = searchParams.get("jobTitle");
+          const selectedJob = fallbackJobs.find((job) => job.title === requestedJobTitle);
+
           setJobs(fallbackJobs);
+          if (selectedJob) {
+            setFormData((current) => ({
+              ...current,
+              jobId: selectedJob.title,
+              jobTitle: selectedJob.title,
+            }));
+          }
         }
       })
       .finally(() => {
@@ -75,14 +97,25 @@ function Register() {
     () => jobs.find((job) => (job._id || job.title) === (formData.jobId || formData.jobTitle)),
     [formData.jobId, formData.jobTitle, jobs],
   );
+  const phoneDigits = getPhoneDigits(formData.phone);
 
   const handleChange = (event) => {
     if (event.target.name === "jobId") {
       const nextJob = jobs.find((job) => (job._id || job.title) === event.target.value);
       setFormData((current) => ({
         ...current,
-        jobId: nextJob?._id || "",
+        jobId: nextJob?._id || nextJob?.title || "",
         jobTitle: nextJob?.title || "",
+      }));
+      setStatus("");
+      return;
+    }
+
+    if (event.target.name === "phone") {
+      const digits = getPhoneDigits(event.target.value).slice(0, 10);
+      setFormData((current) => ({
+        ...current,
+        phone: digits,
       }));
       setStatus("");
       return;
@@ -112,26 +145,56 @@ function Register() {
       resumeFileName: file.name,
       resumeMimeType: file.type,
     }));
+    event.target.value = "";
+    setStatus("");
+  };
+
+  const handleResumeEdit = () => {
+    resumeInputRef.current?.click();
+  };
+
+  const handleResumeDelete = () => {
+    setFormData((current) => ({
+      ...current,
+      resumeFile: "",
+      resumeFileName: "",
+      resumeMimeType: "",
+    }));
+    if (resumeInputRef.current) {
+      resumeInputRef.current.value = "";
+    }
     setStatus("");
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!formData.jobId) {
+    if (!formData.jobId && !formData.jobTitle) {
       setStatus("Please choose an available job before submitting.");
+      return;
+    }
+
+    if (phoneDigits.length !== 10) {
+      setStatus("Phone number must be exactly 10 digits.");
+      return;
+    }
+
+    if (!formData.resumeFile) {
+      setStatus("Please upload your resume before submitting.");
       return;
     }
 
     try {
       setSubmitting(true);
       setStatus("");
-      await apiRequest(`/jobs/${formData.jobId}/apply`, {
+      const hasJobId = selectedJob?._id && formData.jobId === selectedJob._id;
+      await apiRequest(hasJobId ? `/jobs/${formData.jobId}/apply` : "/jobs/apply", {
         method: "POST",
         body: JSON.stringify({
+          jobTitle: formData.jobTitle,
           fullName: formData.fullName,
           email: formData.email,
-          phone: formData.phone,
+          phone: `+91 ${phoneDigits}`,
           experience: formData.experience,
           resumeFile: formData.resumeFile,
           resumeFileName: formData.resumeFileName,
@@ -169,7 +232,7 @@ function Register() {
 
 .application-card{
   width:100%;
-  max-width:1180px;
+  max-width:1260px;
   background:#fff;
   border:1px solid rgba(159,181,202,.55);
   border-radius:22px;
@@ -354,13 +417,14 @@ function Register() {
 
 .application-form{
   display:grid;
-  gap:18px;
+  gap:20px;
+  grid-template-columns:1fr;
 }
 
 .field-grid{
   display:grid;
-  gap:18px;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:20px;
+  grid-template-columns:repeat(2, minmax(260px, 1fr));
 }
 
 .application-field{
@@ -379,6 +443,11 @@ function Register() {
   font-weight:800;
 }
 
+.required-mark{
+  color:#b42318;
+  margin-left:3px;
+}
+
 .application-field input,
 .application-field select,
 .application-field textarea{
@@ -386,9 +455,10 @@ function Register() {
   border:1px solid #d7e2ec;
   border-radius:14px;
   color:#0f2f4d;
-  min-height:54px;
+  font-size:1.05rem;
+  min-height:66px;
   outline:0;
-  padding:13px 15px;
+  padding:18px 20px;
   transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
   width:100%;
 }
@@ -396,6 +466,51 @@ function Register() {
 .application-field textarea{
   min-height:122px;
   resize:vertical;
+}
+
+.phone-input-group{
+  align-items:center;
+  background:#fff;
+  border:1px solid #d7e2ec;
+  border-radius:14px;
+  display:flex;
+  min-height:66px;
+  overflow:hidden;
+  transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  width:100%;
+}
+
+.phone-input-group:focus-within{
+  border-color:#6fb653;
+  box-shadow:0 0 0 4px rgba(111,182,83,.16);
+}
+
+.phone-prefix{
+  align-items:center;
+  align-self:stretch;
+  background:#f1f7ed;
+  border-right:1px solid #d7e2ec;
+  color:#123c65;
+  display:flex;
+  flex:0 0 auto;
+  font-weight:900;
+  min-width:64px;
+  padding:0 16px;
+}
+
+.application-field .phone-input-group input{
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  flex:1 1 auto;
+  min-height:64px;
+  min-width:0;
+  padding-left:20px;
+  padding-right:20px;
+}
+
+.application-field .phone-input-group input:focus{
+  box-shadow:none;
 }
 
 .application-field input:focus,
@@ -414,8 +529,8 @@ function Register() {
   display:grid;
   gap:12px;
   grid-template-columns:46px minmax(0, 1fr);
-  min-height:70px;
-  padding:14px;
+  min-height:82px;
+  padding:18px;
 }
 
 .resume-upload input{
@@ -444,6 +559,37 @@ function Register() {
   color:#667b8e;
   display:block;
   margin-top:3px;
+}
+
+.resume-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:10px;
+}
+
+.resume-action-button{
+  align-items:center;
+  background:#fff;
+  border:1px solid #d7e2ec;
+  border-radius:12px;
+  color:#123c65;
+  display:inline-flex;
+  font-weight:800;
+  gap:8px;
+  min-height:42px;
+  padding:9px 14px;
+  transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.resume-action-button:hover{
+  border-color:#6fb653;
+  box-shadow:0 10px 22px rgba(23,67,111,.12);
+  transform:translateY(-1px);
+}
+
+.resume-action-button.danger{
+  color:#b42318;
 }
 
 .register-btn{
@@ -590,7 +736,7 @@ function Register() {
 
             <form className="application-form" onSubmit={handleSubmit}>
               <div className="application-field full">
-                <label htmlFor="jobId">Applying For</label>
+                <label htmlFor="jobId">Applying For<span className="required-mark">*</span></label>
                 <select
                   id="jobId"
                   name="jobId"
@@ -598,11 +744,11 @@ function Register() {
                   onChange={handleChange}
                   required
                 >
-                  <option value="">
+                  <option value="" disabled>
                     {loadingJobs ? "Loading open roles..." : "Select an open role"}
                   </option>
                   {jobs.map((job) => (
-                    <option disabled={!job._id} key={job._id || job.title} value={job._id || job.title}>
+                    <option key={job._id || job.title} value={job._id || job.title}>
                       {job.title}
                     </option>
                   ))}
@@ -611,7 +757,7 @@ function Register() {
 
               <div className="field-grid">
                 <div className="application-field">
-                  <label htmlFor="fullName">Full Name</label>
+                  <label htmlFor="fullName">Full Name<span className="required-mark">*</span></label>
                   <input
                     id="fullName"
                     type="text"
@@ -624,7 +770,7 @@ function Register() {
                 </div>
 
                 <div className="application-field">
-                  <label htmlFor="email">Email Address</label>
+                  <label htmlFor="email">Email Address<span className="required-mark">*</span></label>
                   <input
                     id="email"
                     type="email"
@@ -639,16 +785,21 @@ function Register() {
 
               <div className="field-grid">
                 <div className="application-field">
-                  <label htmlFor="phone">Phone Number</label>
-                  <input
-                    id="phone"
-                    type="tel"
-                    name="phone"
-                    placeholder="Enter your phone number"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    required
-                  />
+                  <label htmlFor="phone">Phone Number<span className="required-mark">*</span></label>
+                  <div className="phone-input-group">
+                    <span className="phone-prefix">+91</span>
+                    <input
+                      id="phone"
+                      type="tel"
+                      name="phone"
+                      inputMode="numeric"
+                      maxLength="10"
+                      placeholder="10 digit mobile number"
+                      value={phoneDigits}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="application-field">
@@ -665,7 +816,7 @@ function Register() {
               </div>
 
               <div className="application-field full">
-                <span className="resume-upload-label">Resume</span>
+                <span className="resume-upload-label">Resume<span className="required-mark">*</span></span>
                 <label className="resume-upload">
                   <i className="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
                   <span>
@@ -675,9 +826,22 @@ function Register() {
                   <input
                     accept=".pdf,.doc,.docx,image/*"
                     onChange={handleResumeChange}
+                    ref={resumeInputRef}
                     type="file"
                   />
                 </label>
+                {formData.resumeFileName && (
+                  <div className="resume-actions" aria-label="Resume file actions">
+                    <button className="resume-action-button" onClick={handleResumeEdit} type="button">
+                      <i className="bi bi-pencil-square" aria-hidden="true"></i>
+                      Edit
+                    </button>
+                    <button className="resume-action-button danger" onClick={handleResumeDelete} type="button">
+                      <i className="bi bi-trash3" aria-hidden="true"></i>
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="application-field full">
@@ -703,7 +867,7 @@ function Register() {
                 ></textarea>
               </div>
 
-              <button className="register-btn" disabled={submitting || !formData.jobId} type="submit">
+              <button className="register-btn" disabled={submitting || (!formData.jobId && !formData.jobTitle)} type="submit">
                 <i className="bi bi-send-fill" aria-hidden="true"></i>
                 {submitting ? "Submitting..." : "Submit Application"}
               </button>

@@ -42,7 +42,7 @@ function Home() {
 
           <div className="hero-actions">
             <Link className="primary-btn hero-register-btn" to="/register">
-              Register Now
+              Apply Now
               <span className="hero-register-arrow" aria-hidden="true">
                 →
               </span>
