@@ -2,6 +2,29 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiRequest, authStorage } from "../api";
 
+const ADMIN_USERNAME = "Mizentechsolutions";
+const ADMIN_PASSWORD = "Mizen123";
+const ADMIN_EMAIL = "Mizentechsolutions@gmail.com";
+
+const bootstrapAdmin = async () => {
+  const data = await apiRequest("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      role: "admin",
+      fullName: ADMIN_USERNAME,
+      email: ADMIN_EMAIL,
+      phone: "+91 94809 49103",
+      adminCode: "MIZEN-ADMIN",
+      companySize: "100+ Employees",
+      industry: "Technology Services",
+      password: ADMIN_PASSWORD,
+      confirmPassword: ADMIN_PASSWORD,
+    }),
+  });
+
+  return data;
+};
+
 function Login() {
   const navigate = useNavigate();
 
@@ -29,14 +52,38 @@ function Login() {
     setLoading(true);
 
     try {
+      const isFixedAdminLogin =
+        form.username.trim().toLowerCase() === ADMIN_USERNAME.toLowerCase() &&
+        form.password === ADMIN_PASSWORD;
+      const loginPayload = {
+        ...form,
+        username: form.username.trim(),
+        role: isFixedAdminLogin ? "admin" : form.role,
+      };
+
       const data = await apiRequest("/auth/login", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify(loginPayload),
       });
 
       authStorage.setSession(data.token, data.user);
       navigate(data.user.role === "admin" ? "/admin" : "/employee");
     } catch (err) {
+      const isFixedAdminLogin =
+        form.username.trim().toLowerCase() === ADMIN_USERNAME.toLowerCase() &&
+        form.password === ADMIN_PASSWORD;
+
+      if (isFixedAdminLogin) {
+        try {
+          const data = await bootstrapAdmin();
+          authStorage.setSession(data.token, data.user);
+          navigate("/admin");
+          return;
+        } catch {
+          authStorage.clearSession();
+        }
+      }
+
       setError(err.message || "Invalid username or password");
     } finally {
       setLoading(false);
@@ -48,20 +95,20 @@ function Login() {
       <style>{`
         .login-page{
           min-height:100vh;
-          background:#ffffff;
+          background:linear-gradient(135deg, rgba(23,67,111,.06), rgba(111,182,83,.08)), #ffffff;
           display:flex;
           justify-content:center;
           align-items:center;
-          padding:20px;
+          padding:42px 18px;
         }
 
         .login-card{
           width:100%;
-          max-width:1000px;
+          max-width:1060px;
           background:#fff;
           border-radius:24px;
           overflow:hidden;
-          box-shadow:0 15px 40px rgba(23,67,111,.12);
+          box-shadow:0 24px 70px rgba(23,67,111,.14);
           animation:fadeUp .8s ease;
         }
 
@@ -83,7 +130,7 @@ function Login() {
             #6fb653
           );
           color:#fff;
-          padding:60px 40px;
+          padding:70px 44px;
           height:100%;
           display:flex;
           flex-direction:column;
@@ -126,8 +173,9 @@ function Login() {
         }
 
         .login-left h1{
-          font-size:2.8rem;
-          font-weight:800;
+          font-size:clamp(2.4rem, 5vw, 3.5rem);
+          font-weight:900;
+          line-height:1;
           margin-bottom:20px;
         }
 
@@ -136,7 +184,7 @@ function Login() {
         }
 
         .login-right{
-          padding:50px;
+          padding:58px 52px;
           background:#fff;
         }
 
@@ -147,44 +195,52 @@ function Login() {
           margin-bottom:30px;
         }
 
-        .input-group{
+        .login-form{
+          display:grid;
+          gap:20px;
+        }
+
+        .login-field{
+          display:grid;
+          gap:8px;
+        }
+
+        .login-field{
           margin-bottom:20px;
         }
 
-        .input-group label{
+        .login-field label{
           display:block;
           font-weight:600;
           color:#17436f;
-          margin-bottom:8px;
         }
 
-        .input-group input{
+        .login-field input,
+        .login-field select{
           width:100%;
           height:55px;
           border:1px solid #dbe4ee;
           border-radius:12px;
           padding:0 15px;
           transition:.3s;
-        }
-
-        .input-group select{
-          width:100%;
-          height:55px;
-          border:1px solid #dbe4ee;
-          border-radius:12px;
-          padding:0 15px;
           background:#fff;
           color:#17436f;
-          transition:.3s;
         }
 
-        .input-group select:focus{
-          outline:none;
-          border-color:#6fb653;
-          box-shadow:0 0 0 4px rgba(111,182,83,.15);
+        .login-role-pill{
+          align-items:center;
+          background:linear-gradient(135deg, #f4faf2, #eef7ff);
+          border:1px solid #dbe4ee;
+          border-radius:12px;
+          color:#17436f;
+          display:flex;
+          font-weight:700;
+          height:55px;
+          padding:0 15px;
         }
 
-        .input-group input:focus{
+        .login-field input:focus,
+        .login-field select:focus{
           outline:none;
           border-color:#6fb653;
           box-shadow:0 0 0 4px rgba(111,182,83,.15);
@@ -277,7 +333,7 @@ function Login() {
               <div className="login-left">
 
                 <div className="login-badge">
-                  ADMIN PORTAL
+                  PORTAL LOGIN
                 </div>
 
                 <h1>Welcome Back</h1>
@@ -291,28 +347,24 @@ function Login() {
               </div>
             </div>
 
-            <div className="col-md-7">
+          <div className="col-md-7">
               <div className="login-right">
 
                 <h2 className="form-title">
                   Sign In
                 </h2>
 
-                <form onSubmit={handleSubmit}>
+                <form className="login-form" onSubmit={handleSubmit}>
 
-                  <div className="input-group">
+                  <div className="login-field">
                     <label>Login As</label>
-                    <select
-                      name="role"
-                      value={form.role}
-                      onChange={handleChange}
-                    >
+                    <select name="role" value={form.role} onChange={handleChange}>
                       <option value="employee">Employee</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>
 
-                  <div className="input-group">
+                  <div className="login-field">
                     <label>Username</label>
                     <input
                       type="text"
@@ -325,7 +377,7 @@ function Login() {
                   </div>
 
                   <div className="password-wrapper">
-                    <div className="input-group">
+                    <div className="login-field">
                       <label>Password</label>
                       <input
                         type={

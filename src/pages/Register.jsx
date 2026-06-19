@@ -1,588 +1,716 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { Link, useNavigate } from "react-router-dom";
-import { apiRequest, authStorage } from "../api";
+import { useSearchParams } from "react-router-dom";
+import { apiRequest } from "../api";
+import { jobs as fallbackJobs } from "../content";
 
-function Register() {
-  const navigate = useNavigate();
-  const [showPassword, setShowPassword] = useState(false);
-
- const [formData, setFormData] = useState({
-  role: "employee",
-
+const emptyApplication = {
+  jobId: "",
+  jobTitle: "",
   fullName: "",
   email: "",
   phone: "",
+  experience: "",
+  resumeFile: "",
+  resumeFileName: "",
+  resumeMimeType: "",
+  portfolio: "",
+  coverLetter: "",
+};
 
-  employeeId: "",
-  department: "",
-  designation: "",
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 
-  adminCode: "",
-  companySize: "",
-  industry: "",
+function Register() {
+  const [searchParams] = useSearchParams();
+  const [jobs, setJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [formData, setFormData] = useState(emptyApplication);
+  const [status, setStatus] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  password: "",
-  confirmPassword: "",
-});
+  useEffect(() => {
+    let isActive = true;
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    apiRequest("/jobs")
+      .then((data) => {
+        if (isActive && data.jobs?.length) {
+          const requestedJobId = searchParams.get("jobId");
+          const requestedJobTitle = searchParams.get("jobTitle");
+          const selectedJob =
+            data.jobs.find((job) => job._id === requestedJobId) ||
+            data.jobs.find((job) => job.title === requestedJobTitle) ||
+            data.jobs[0];
+
+          setJobs(data.jobs);
+          setFormData((current) => ({
+            ...current,
+            jobId: selectedJob?._id || "",
+            jobTitle: selectedJob?.title || current.jobTitle,
+          }));
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setJobs(fallbackJobs);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoadingJobs(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [searchParams]);
+
+  const selectedJob = useMemo(
+    () => jobs.find((job) => (job._id || job.title) === (formData.jobId || formData.jobTitle)),
+    [formData.jobId, formData.jobTitle, jobs],
+  );
+
+  const handleChange = (event) => {
+    if (event.target.name === "jobId") {
+      const nextJob = jobs.find((job) => (job._id || job.title) === event.target.value);
+      setFormData((current) => ({
+        ...current,
+        jobId: nextJob?._id || "",
+        jobTitle: nextJob?.title || "",
+      }));
+      setStatus("");
+      return;
+    }
+
+    setFormData((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }));
+    setStatus("");
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleResumeChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  try {
-    const data = await apiRequest("/auth/register", {
-      method: "POST",
-      body: JSON.stringify(formData),
-    });
-
-    if (data.success) {
-      alert("Registration Successful");
-
-      authStorage.setSession(data.token, data.user);
-
-      navigate(data.user.role === "admin" ? "/admin" : "/employee");
-    } else {
-      alert(data.message);
+    if (file.size > 4 * 1024 * 1024) {
+      setStatus("Resume file must be 4 MB or smaller.");
+      event.target.value = "";
+      return;
     }
-  } catch (error) {
-    console.log(error);
-    alert("Something went wrong");
-  }
-};
+
+    const resumeFile = await readFileAsDataUrl(file);
+    setFormData((current) => ({
+      ...current,
+      resumeFile,
+      resumeFileName: file.name,
+      resumeMimeType: file.type,
+    }));
+    setStatus("");
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!formData.jobId) {
+      setStatus("Please choose an available job before submitting.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setStatus("");
+      await apiRequest(`/jobs/${formData.jobId}/apply`, {
+        method: "POST",
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          experience: formData.experience,
+          resumeFile: formData.resumeFile,
+          resumeFileName: formData.resumeFileName,
+          resumeMimeType: formData.resumeMimeType,
+          portfolio: formData.portfolio,
+          coverLetter: formData.coverLetter,
+        }),
+      });
+      setFormData((current) => ({
+        ...emptyApplication,
+        jobId: current.jobId,
+        jobTitle: current.jobTitle,
+      }));
+      setStatus(`Thank you, ${formData.fullName}. Your application has been submitted successfully.`);
+    } catch (error) {
+      setStatus(error.message || "Failed to submit application.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
-     <style>{`
-*{
-  margin:0;
-  padding:0;
-  box-sizing:border-box;
-}
-
-.register-page{
+      <style>{`
+.application-page{
   min-height:100vh;
-  background:#f8fafc;
+  background:
+    linear-gradient(135deg, rgba(23,67,111,.08), rgba(111,182,83,.08)),
+    #f7fafc;
   display:flex;
   align-items:center;
   justify-content:center;
-  padding:40px 15px;
+  padding:48px 18px;
 }
 
-.register-card{
+.application-card{
   width:100%;
-  max-width:1150px;
+  max-width:1180px;
   background:#fff;
-  border-radius:24px;
+  border:1px solid rgba(159,181,202,.55);
+  border-radius:22px;
+  box-shadow:0 22px 60px rgba(23,67,111,.14);
+  display:grid;
+  grid-template-columns:minmax(300px, .86fr) minmax(0, 1.14fr);
   overflow:hidden;
-  box-shadow:0 15px 45px rgba(23,67,111,.12);
-  animation:fadeUp .8s ease;
 }
 
-@keyframes fadeUp{
-  from{
-    opacity:0;
-    transform:translateY(40px);
-  }
-  to{
-    opacity:1;
-    transform:translateY(0);
-  }
-}
-
-.left-section{
-  background:linear-gradient(
-    135deg,
-    #17436f,
-    #6fb653
-  );
+.application-info{
+  background:
+    linear-gradient(145deg, rgba(23,67,111,.96), rgba(62,133,91,.95)),
+    #17436f;
   color:#fff;
-  height:100%;
-  padding:60px 40px;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
+  min-height:100%;
+  padding:52px 42px;
   position:relative;
   overflow:hidden;
 }
 
-.left-section::before{
+.application-info::before,
+.application-info::after{
   content:"";
   position:absolute;
-  width:220px;
-  height:220px;
-  border-radius:50%;
-  background:rgba(255,255,255,.08);
-  top:-80px;
-  right:-80px;
+  border-radius:999px;
+  background:rgba(255,255,255,.11);
 }
 
-.left-section::after{
-  content:"";
-  position:absolute;
-  width:140px;
-  height:140px;
-  border-radius:50%;
-  background:rgba(255,255,255,.06);
-  bottom:-30px;
-  left:-30px;
+.application-info::before{
+  height:190px;
+  right:-56px;
+  top:-68px;
+  width:190px;
 }
 
-.company-badge{
-  display:inline-block;
-  width:max-content;
-  padding:8px 18px;
-  border-radius:30px;
-  background:rgba(255,255,255,.15);
-  margin-bottom:20px;
-  font-size:13px;
-  font-weight:600;
-  letter-spacing:1px;
+.application-info::after{
+  bottom:-74px;
+  height:210px;
+  left:-82px;
+  width:210px;
 }
 
-.left-section h1{
-  font-size:3rem;
+.application-badge{
+  align-items:center;
+  background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:999px;
+  display:inline-flex;
+  font-size:12px;
   font-weight:800;
-  margin-bottom:20px;
+  letter-spacing:.08em;
+  margin-bottom:24px;
+  padding:9px 16px;
+  text-transform:uppercase;
 }
 
-.left-section p{
-  line-height:1.8;
-  opacity:.95;
+.application-info h1{
+  font-size:clamp(2.4rem, 5vw, 4.25rem);
+  font-weight:900;
+  line-height:1;
+  margin:0 0 18px;
 }
 
-.feature-list{
-  margin-top:30px;
+.application-info p{
+  color:rgba(255,255,255,.88);
+  font-size:1rem;
+  line-height:1.75;
+  margin:0;
+  max-width:420px;
 }
 
-.feature-list div{
-  margin-bottom:12px;
-  font-size:15px;
-}
-
-.right-section{
-  padding:40px;
-  background:#fff;
-}
-
-.form-title{
-  color:#17436f;
-  font-size:2rem;
-  font-weight:700;
-  margin-bottom:25px;
-}
-
-.form-floating{
-  margin-bottom:18px;
-}
-
-.form-control,
-.form-select{
-  min-height:58px;
-  border-radius:12px;
-  border:1px solid #dbe4ee;
-  transition:.3s;
-}
-
-.form-control:focus,
-.form-select:focus{
-  border-color:#6fb653;
-  box-shadow:0 0 0 4px rgba(111,182,83,.15);
-}
-
-.form-select{
-  cursor:pointer;
-}
-
-.password-wrapper{
+.application-steps{
+  display:grid;
+  gap:16px;
+  margin-top:34px;
   position:relative;
+  z-index:1;
 }
 
-.show-btn{
-  position:absolute;
-  right:15px;
-  top:50%;
-  transform:translateY(-50%);
-  border:none;
-  background:none;
-  color:#17436f;
-  font-weight:600;
-  cursor:pointer;
-  z-index:10;
+.application-step{
+  align-items:center;
+  display:grid;
+  gap:12px;
+  grid-template-columns:42px minmax(0, 1fr);
 }
 
-.employee-box,
-.admin-box{
+.application-step i{
+  align-items:center;
+  background:rgba(255,255,255,.18);
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:14px;
+  display:flex;
+  height:42px;
+  justify-content:center;
+  width:42px;
+}
+
+.application-step strong{
+  display:block;
+  font-size:.98rem;
+  line-height:1.25;
+}
+
+.application-step span{
+  color:rgba(255,255,255,.76);
+  display:block;
+  font-size:.86rem;
+  margin-top:2px;
+}
+
+.application-form-panel{
+  padding:48px;
+}
+
+.application-heading{
+  display:grid;
+  gap:8px;
+  margin-bottom:26px;
+}
+
+.application-heading span{
+  color:#6fb653;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+.application-heading h2{
+  color:#123c65;
+  font-size:clamp(1.85rem, 3vw, 2.45rem);
+  font-weight:900;
+  line-height:1.08;
+  margin:0;
+}
+
+.application-heading p{
+  color:#5d7288;
+  line-height:1.65;
+  margin:0;
+}
+
+.selected-role{
+  align-items:center;
+  background:#f3f8f3;
+  border:1px solid rgba(111,182,83,.26);
+  border-radius:16px;
+  display:grid;
+  gap:14px;
+  grid-template-columns:46px minmax(0, 1fr);
+  margin-bottom:22px;
+  padding:16px;
+}
+
+.selected-role i{
+  align-items:center;
+  background:#6fb653;
+  border-radius:14px;
+  color:#123c65;
+  display:flex;
+  font-size:22px;
+  height:46px;
+  justify-content:center;
+  width:46px;
+}
+
+.selected-role span{
+  color:#627486;
+  display:block;
+  font-size:.82rem;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.selected-role strong{
+  color:#123c65;
+  display:block;
+  font-size:1.04rem;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+
+.application-form{
+  display:grid;
+  gap:18px;
+}
+
+.field-grid{
+  display:grid;
+  gap:18px;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
+.application-field{
+  display:grid;
+  gap:8px;
+}
+
+.application-field.full{
+  grid-column:1 / -1;
+}
+
+.application-field label,
+.resume-upload-label{
+  color:#123c65;
+  font-size:.92rem;
+  font-weight:800;
+}
+
+.application-field input,
+.application-field select,
+.application-field textarea{
+  background:#fff;
+  border:1px solid #d7e2ec;
+  border-radius:14px;
+  color:#0f2f4d;
+  min-height:54px;
+  outline:0;
+  padding:13px 15px;
+  transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  width:100%;
+}
+
+.application-field textarea{
+  min-height:122px;
+  resize:vertical;
+}
+
+.application-field input:focus,
+.application-field select:focus,
+.application-field textarea:focus{
+  border-color:#6fb653;
+  box-shadow:0 0 0 4px rgba(111,182,83,.16);
+}
+
+.resume-upload{
   background:#f8fbff;
-  border-left:5px solid #6fb653;
-  padding:20px;
-  border-radius:15px;
-  margin-bottom:20px;
-  animation:slideDown .4s ease;
+  border:1px dashed #9fb5ca;
+  border-radius:16px;
+  color:#123c65;
+  cursor:pointer;
+  display:grid;
+  gap:12px;
+  grid-template-columns:46px minmax(0, 1fr);
+  min-height:70px;
+  padding:14px;
 }
 
-.section-title{
-  color:#17436f;
-  font-size:18px;
-  font-weight:700;
-  margin-bottom:15px;
+.resume-upload input{
+  display:none;
 }
 
-@keyframes slideDown{
-  from{
-    opacity:0;
-    transform:translateY(-10px);
-  }
-  to{
-    opacity:1;
-    transform:translateY(0);
-  }
+.resume-upload i{
+  align-items:center;
+  background:#e8f5e7;
+  border-radius:14px;
+  color:#2d7b42;
+  display:flex;
+  font-size:22px;
+  height:46px;
+  justify-content:center;
+  width:46px;
+}
+
+.resume-upload strong{
+  color:#123c65;
+  display:block;
+  overflow-wrap:anywhere;
+}
+
+.resume-upload small{
+  color:#667b8e;
+  display:block;
+  margin-top:3px;
 }
 
 .register-btn{
-  width:100%;
-  border:none;
-  border-radius:12px;
-  padding:14px;
-  font-size:16px;
-  font-weight:700;
+  align-items:center;
+  background:linear-gradient(135deg, #17436f, #6fb653);
+  border:0;
+  border-radius:14px;
   color:#fff;
-  background:linear-gradient(
-    135deg,
-    #17436f,
-    #6fb653
-  );
-  transition:.3s;
+  display:inline-flex;
+  font-size:1rem;
+  font-weight:900;
+  gap:10px;
+  justify-content:center;
+  min-height:56px;
+  padding:14px 18px;
+  transition:transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+  width:100%;
 }
 
 .register-btn:hover{
-  transform:translateY(-3px);
-  box-shadow:0 12px 25px rgba(23,67,111,.25);
+  box-shadow:0 14px 28px rgba(23,67,111,.22);
+  transform:translateY(-2px);
 }
 
-.login-link{
-  text-align:center;
-  margin-top:20px;
+.register-btn:disabled{
+  cursor:not-allowed;
+  opacity:.62;
+  transform:none;
 }
 
-.login-link a{
-  color:#6fb653;
-  text-decoration:none;
-  font-weight:600;
+.application-status{
+  border-radius:14px;
+  font-weight:750;
+  line-height:1.55;
+  margin:0 0 20px;
+  padding:14px 16px;
 }
 
-.login-link a:hover{
-  color:#17436f;
+.application-status.success{
+  background:#eff9ef;
+  border:1px solid rgba(111,182,83,.34);
+  color:#20592f;
 }
 
-.role-badge{
-  display:inline-block;
-  background:#e8f5e9;
-  color:#17436f;
-  padding:6px 15px;
-  border-radius:20px;
-  font-size:12px;
-  font-weight:600;
-  margin-bottom:15px;
+.application-status.error{
+  background:#fff4f4;
+  border:1px solid rgba(220,53,69,.26);
+  color:#9d1f2e;
 }
 
-@media(max-width:992px){
-
-  .left-section h1{
-    font-size:2.3rem;
+@media(max-width:900px){
+  .application-card{
+    grid-template-columns:1fr;
   }
 
-  .right-section{
-    padding:30px;
+  .application-info{
+    min-height:auto;
+    padding:38px 28px;
+  }
+
+  .application-form-panel{
+    padding:34px 26px;
   }
 }
 
-@media(max-width:768px){
-
-  .left-section{
-    display:none;
+@media(max-width:640px){
+  .application-page{
+    padding:24px 12px;
   }
 
-  .right-section{
-    padding:25px;
-  }
-
-  .form-title{
-    text-align:center;
-    font-size:1.8rem;
-  }
-
-  .register-card{
+  .application-card{
     border-radius:18px;
+  }
+
+  .field-grid{
+    grid-template-columns:1fr;
+  }
+
+  .application-info,
+  .application-form-panel{
+    padding:28px 20px;
   }
 }
 `}</style>
 
-      <div className="register-page">
-        <div className="register-card">
-          <div className="row g-0">
+      <main className="application-page">
+        <section className="application-card" aria-label="Job application register">
+          <aside className="application-info">
+            <span className="application-badge" style={{color:"white"}}>Job Application</span>
+            <h1>Apply Now</h1>
+            <p>
+              Share your details with Mizen Tech Solutions. Your application
+              will be reviewed by the admin team from the dashboard.
+            </p>
 
-            <div className="col-md-5">
-              <div className="left-section">
-
-                <div className="company-badge">
-                  COMPANY REGISTRATION
+            <div className="application-steps" aria-label="Application steps">
+              <div className="application-step">
+                <i className="bi bi-briefcase-fill" aria-hidden="true"></i>
+                <div>
+                  <strong>Choose an open role</strong>
+                  <span>Select the position that matches your profile.</span>
                 </div>
-
-                <h1>Welcome</h1>
-
-                <p>
-                  Create your company account and start managing
-                  employees, projects, services, and clients from a
-                  single platform.
-                </p>
-
-                <div className="feature-list">
-                  <div>✓ Easy Registration</div>
-                  <div>✓ Secure Platform</div>
-                  <div>✓ Business Management</div>
-                  <div>✓ Employee Tracking</div>
+              </div>
+              <div className="application-step">
+                <i className="bi bi-file-earmark-arrow-up-fill" aria-hidden="true"></i>
+                <div>
+                  <strong>Upload your resume</strong>
+                  <span>PDF, DOC, DOCX, or image files up to 4 MB.</span>
                 </div>
+              </div>
+              <div className="application-step">
+                <i className="bi bi-check2-circle" aria-hidden="true"></i>
+                <div>
+                  <strong>Submit for review</strong>
+                  <span>Your application appears in the admin dashboard.</span>
+                </div>
+              </div>
+            </div>
+          </aside>
 
+          <section className="application-form-panel">
+            <div className="application-heading">
+              <span>Candidate Register</span>
+              <h2>Job Application Register</h2>
+              <p>
+                This form is for candidates applying for jobs. Employee accounts
+                are created separately by admin.
+              </p>
+            </div>
+
+            <div className="selected-role">
+              <i className="bi bi-stars" aria-hidden="true"></i>
+              <div>
+                <span>Selected role</span>
+                <strong>{selectedJob?.title || formData.jobTitle || "Choose an open role"}</strong>
               </div>
             </div>
 
-            <div className="col-md-7">
-              <div className="right-section">
+            {status && (
+              <p className={`application-status ${status.startsWith("Thank you") ? "success" : "error"}`}>
+                {status}
+              </p>
+            )}
 
-                <h2 className="form-title">
-                  Create Account
-                </h2>
-
-               <form onSubmit={handleSubmit}>
-
-  {/* Role Selection */}
-  <div className="form-floating mb-3">
-    <select
-      className="form-select"
-      name="role"
-      value={formData.role}
-      onChange={handleChange}
-    >
-      <option value="employee">Employee</option>
-      <option value="admin">Admin</option>
-    </select>
-    <label>Select Role</label>
-  </div>
-
-  <div className="row">
-    <div className="col-md-6">
-      <div className="form-floating">
-        <input
-          type="text"
-          className="form-control"
-          name="fullName"
-          placeholder="Full Name"
-          value={formData.fullName}
-          onChange={handleChange}
-          required
-        />
-        <label>Full Name</label>
-      </div>
-    </div>
-
-    <div className="col-md-6">
-      <div className="form-floating">
-        <input
-          type="email"
-          className="form-control"
-          name="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-        />
-        <label>Email Address</label>
-      </div>
-    </div>
-  </div>
-
-  <div className="form-floating mt-3">
-    <input
-      type="tel"
-      className="form-control"
-      name="phone"
-      placeholder="Phone"
-      value={formData.phone}
-      onChange={handleChange}
-      required
-    />
-    <label>Phone Number</label>
-  </div>
-
-  {/* Employee Fields */}
-  {formData.role === "employee" && (
-    <div className="employee-box mt-3">
-
-      <h5 className="section-title">
-        Employee Information
-      </h5>
-
-      <div className="form-floating mb-3">
-        <input
-          type="text"
-          className="form-control"
-          name="employeeId"
-          placeholder="Employee ID"
-          value={formData.employeeId}
-          onChange={handleChange}
-        />
-        <label>Employee ID</label>
-      </div>
-
-      <div className="row">
-        <div className="col-md-6">
-          <div className="form-floating">
-            <input
-              type="text"
-              className="form-control"
-              name="department"
-              placeholder="Department"
-              value={formData.department}
-              onChange={handleChange}
-            />
-            <label>Department</label>
-          </div>
-        </div>
-
-        <div className="col-md-6">
-          <div className="form-floating">
-            <input
-              type="text"
-              className="form-control"
-              name="designation"
-              placeholder="Designation"
-              value={formData.designation}
-              onChange={handleChange}
-            />
-            <label>Designation</label>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  )}
-
-  {/* Admin Fields */}
-  {formData.role === "admin" && (
-    <div className="admin-box mt-3">
-
-      <h5 className="section-title">
-        Admin Information
-      </h5>
-
-      <div className="form-floating mb-3">
-        <input
-          type="text"
-          className="form-control"
-          name="adminCode"
-          placeholder="Admin Code"
-          value={formData.adminCode}
-          onChange={handleChange}
-        />
-        <label>Admin Code</label>
-      </div>
-
-      <div className="form-floating mb-3">
-        <select
-          className="form-select"
-          name="companySize"
-          value={formData.companySize}
-          onChange={handleChange}
-        >
-          <option value="">Select Team Size</option>
-          <option>1 - 10 Employees</option>
-          <option>11 - 50 Employees</option>
-          <option>51 - 100 Employees</option>
-          <option>100+ Employees</option>
-        </select>
-        <label>Team Size</label>
-      </div>
-
-      <div className="form-floating">
-        <input
-          type="text"
-          className="form-control"
-          name="industry"
-          placeholder="Industry"
-          value={formData.industry}
-          onChange={handleChange}
-        />
-        <label>Industry Type</label>
-      </div>
-
-    </div>
-  )}
-
-  {/* Password */}
-  <div className="password-wrapper mt-3">
-    <div className="form-floating">
-      <input
-        type={showPassword ? "text" : "password"}
-        className="form-control"
-        name="password"
-        placeholder="Password"
-        value={formData.password}
-        onChange={handleChange}
-        required
-      />
-      <label>Password</label>
-    </div>
-
-    <button
-      type="button"
-      className="show-btn"
-      onClick={() => setShowPassword(!showPassword)}
-    >
-      {showPassword ? "Hide" : "Show"}
-    </button>
-  </div>
-
-  {/* Confirm Password */}
-  <div className="form-floating mt-3">
-    <input
-      type={showPassword ? "text" : "password"}
-      className="form-control"
-      name="confirmPassword"
-      placeholder="Confirm Password"
-      value={formData.confirmPassword}
-      onChange={handleChange}
-      required
-    />
-    <label>Confirm Password</label>
-  </div>
-
-  <button
-    type="submit"
-    className="register-btn mt-4"
-  >
-    Create Account
-  </button>
-
-  <div className="login-link">
-    Already have an account?{" "}
-    <Link to="/login">Login</Link>
-  </div>
-
-</form>
-
+            <form className="application-form" onSubmit={handleSubmit}>
+              <div className="application-field full">
+                <label htmlFor="jobId">Applying For</label>
+                <select
+                  id="jobId"
+                  name="jobId"
+                  value={formData.jobId}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">
+                    {loadingJobs ? "Loading open roles..." : "Select an open role"}
+                  </option>
+                  {jobs.map((job) => (
+                    <option disabled={!job._id} key={job._id || job.title} value={job._id || job.title}>
+                      {job.title}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
 
-          </div>
-        </div>
-      </div>
+              <div className="field-grid">
+                <div className="application-field">
+                  <label htmlFor="fullName">Full Name</label>
+                  <input
+                    id="fullName"
+                    type="text"
+                    name="fullName"
+                    placeholder="Enter your full name"
+                    value={formData.fullName}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="application-field">
+                  <label htmlFor="email">Email Address</label>
+                  <input
+                    id="email"
+                    type="email"
+                    name="email"
+                    placeholder="name@example.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="field-grid">
+                <div className="application-field">
+                  <label htmlFor="phone">Phone Number</label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    name="phone"
+                    placeholder="Enter your phone number"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="application-field">
+                  <label htmlFor="experience">Experience</label>
+                  <input
+                    id="experience"
+                    type="text"
+                    name="experience"
+                    placeholder="Example: 2 years"
+                    value={formData.experience}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              <div className="application-field full">
+                <span className="resume-upload-label">Resume</span>
+                <label className="resume-upload">
+                  <i className="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
+                  <span>
+                    <strong>{formData.resumeFileName || "Upload resume file"}</strong>
+                    <small>PDF, DOC, DOCX, or image files up to 4 MB</small>
+                  </span>
+                  <input
+                    accept=".pdf,.doc,.docx,image/*"
+                    onChange={handleResumeChange}
+                    type="file"
+                  />
+                </label>
+              </div>
+
+              <div className="application-field full">
+                <label htmlFor="portfolio">Portfolio or LinkedIn Link</label>
+                <input
+                  id="portfolio"
+                  type="url"
+                  name="portfolio"
+                  placeholder="https://"
+                  value={formData.portfolio}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="application-field full">
+                <label htmlFor="coverLetter">Short Message</label>
+                <textarea
+                  id="coverLetter"
+                  name="coverLetter"
+                  placeholder="Tell us briefly about your fit for this role"
+                  value={formData.coverLetter}
+                  onChange={handleChange}
+                ></textarea>
+              </div>
+
+              <button className="register-btn" disabled={submitting || !formData.jobId} type="submit">
+                <i className="bi bi-send-fill" aria-hidden="true"></i>
+                {submitting ? "Submitting..." : "Submit Application"}
+              </button>
+            </form>
+          </section>
+        </section>
+      </main>
     </>
   );
 }

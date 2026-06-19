@@ -6,6 +6,7 @@ import logo from '../assets/images/logo.jpg'
 const sidebarItems = [
   ['dashboard', 'bi-grid-1x2-fill', 'Dashboard'],
   ['registers', 'bi-people-fill', 'Registers'],
+  ['employee-register', 'bi-person-plus-fill', 'Employee Register'],
   ['employees', 'bi-person-badge-fill', 'Employees'],
   ['leaves', 'bi-calendar2-check-fill', 'Leaves'],
   ['attendance', 'bi-clock-history', 'Attendance'],
@@ -43,6 +44,54 @@ const emptyServiceForm = {
   order: 0,
 }
 
+const emptyEmployeeForm = {
+  fullName: '',
+  email: '',
+  phone: '',
+  employeeId: '',
+  department: '',
+  designation: '',
+  password: '',
+  confirmPassword: '',
+}
+
+const emptyEmployeeEditForm = {
+  fullName: '',
+  email: '',
+  phone: '',
+  employeeId: '',
+  department: '',
+  designation: '',
+  password: '',
+  confirmPassword: '',
+}
+
+const emptyRegisterForm = {
+  role: 'employee',
+  fullName: '',
+  email: '',
+  phone: '',
+  employeeId: '',
+  department: '',
+  designation: '',
+  adminCode: '',
+  companySize: '',
+  industry: '',
+  password: '',
+  confirmPassword: '',
+}
+
+const emptyApplicationForm = {
+  fullName: '',
+  email: '',
+  phone: '',
+  jobTitle: '',
+  experience: '',
+  portfolio: '',
+  coverLetter: '',
+  status: 'new',
+}
+
 const readFileAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -53,11 +102,15 @@ const readFileAsDataUrl = (file) =>
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'Not added')
 const formatTime = (value) => (value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending')
+const getReviewMessage = (application) =>
+  `${application.fullName || 'Candidate'} moved to review. Please check the application details before the next step.`
 
 function AdminDashboard() {
   const navigate = useNavigate()
   const storedUser = authStorage.getUser()
-  const isAdmin = authStorage.getToken() && (storedUser?.role === 'admin' || localStorage.getItem('mizenRole') === 'admin')
+  const token = authStorage.getToken()
+  const hasFixedFallbackToken = token === 'mizen-fixed-admin'
+  const isAdmin = token && !hasFixedFallbackToken && (storedUser?.role === 'admin' || localStorage.getItem('mizenRole') === 'admin')
 
   const [activeView, setActiveView] = useState('dashboard')
   const [adminUser, setAdminUser] = useState(storedUser)
@@ -77,6 +130,15 @@ function AdminDashboard() {
   const [savingProfilePhoto, setSavingProfilePhoto] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [error, setError] = useState('')
+  const [applicationNotice, setApplicationNotice] = useState('')
+  const [editingRegisterId, setEditingRegisterId] = useState('')
+  const [registerForm, setRegisterForm] = useState(emptyRegisterForm)
+  const [editingApplicationId, setEditingApplicationId] = useState('')
+  const [applicationForm, setApplicationForm] = useState(emptyApplicationForm)
+  const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm)
+  const [employeeEditForm, setEmployeeEditForm] = useState(emptyEmployeeEditForm)
+  const [editingEmployeeId, setEditingEmployeeId] = useState('')
+  const [creatingEmployee, setCreatingEmployee] = useState(false)
   const [jobForm, setJobForm] = useState({
     title: '',
     department: '',
@@ -111,6 +173,7 @@ function AdminDashboard() {
     name: '',
     description: '',
   })
+  const [editingDepartmentId, setEditingDepartmentId] = useState('')
   const [serviceForm, setServiceForm] = useState(emptyServiceForm)
   const [editingServiceId, setEditingServiceId] = useState('')
 
@@ -218,6 +281,12 @@ function AdminDashboard() {
   }
 
   useEffect(() => {
+    if (hasFixedFallbackToken) {
+      authStorage.clearSession()
+      navigate('/login')
+      return undefined
+    }
+
     if (!isAdmin) return undefined
 
     let isActive = true
@@ -243,7 +312,7 @@ function AdminDashboard() {
     return () => {
       isActive = false
     }
-  }, [isAdmin])
+  }, [hasFixedFallbackToken, isAdmin, navigate])
 
   const filteredRegisters = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -299,6 +368,34 @@ function AdminDashboard() {
     }))
   }
 
+  const handleRegisterChange = (event) => {
+    setRegisterForm((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }))
+  }
+
+  const handleEmployeeChange = (event) => {
+    setEmployeeForm((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }))
+  }
+
+  const handleEmployeeEditChange = (event) => {
+    setEmployeeEditForm((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }))
+  }
+
+  const handleApplicationEditChange = (event) => {
+    setApplicationForm((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }))
+  }
+
   const handleServiceChange = (event) => {
     setServiceForm((current) => ({
       ...current,
@@ -329,14 +426,150 @@ function AdminDashboard() {
     }
   }
 
-  const handleApplicationStatus = async (applicationId, status) => {
+  const handleEditApplication = (application) => {
+    setEditingApplicationId(application._id)
+    setApplicationNotice('')
+    setApplicationForm({
+      fullName: application.fullName || '',
+      email: application.email || '',
+      phone: application.phone || '',
+      jobTitle: application.jobTitle || '',
+      experience: application.experience || '',
+      portfolio: application.portfolio || '',
+      coverLetter: application.coverLetter || '',
+      status: application.status || 'new',
+    })
+    setActiveView('applications')
+  }
+
+  const handleCancelApplicationEdit = () => {
+    setEditingApplicationId('')
+    setApplicationForm(emptyApplicationForm)
+  }
+
+  const handleSaveApplication = async (event) => {
+    event.preventDefault()
+    if (!editingApplicationId) return
+
     try {
       setError('')
+      setApplicationNotice('')
+      await apiRequest(`/admin/applications/${editingApplicationId}`, {
+        method: 'PUT',
+        body: JSON.stringify(applicationForm),
+      })
+      handleCancelApplicationEdit()
+      await loadAdminData()
+      setApplicationNotice('Application updated successfully.')
+    } catch (err) {
+      setError(err.message || 'Failed to update application')
+    }
+  }
+
+  const handleEditRegister = (user) => {
+    setEditingRegisterId(user._id)
+    setRegisterForm({
+      role: user.role || 'employee',
+      fullName: user.fullName || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      employeeId: user.employeeId || '',
+      department: user.department || '',
+      designation: user.designation || '',
+      adminCode: user.adminCode || '',
+      companySize: user.companySize || '',
+      industry: user.industry || '',
+      password: '',
+      confirmPassword: '',
+    })
+    setActiveView('registers')
+  }
+
+  const handleCancelRegisterEdit = () => {
+    setEditingRegisterId('')
+    setRegisterForm(emptyRegisterForm)
+  }
+
+  const handleSaveRegister = async (event) => {
+    event.preventDefault()
+    if (!editingRegisterId) return
+
+    try {
+      setError('')
+      await apiRequest(`/admin/users/${editingRegisterId}`, {
+        method: 'PUT',
+        body: JSON.stringify(registerForm),
+      })
+      handleCancelRegisterEdit()
+      await loadAdminData()
+    } catch (err) {
+      setError(err.message || 'Failed to update register')
+    }
+  }
+
+  const handleDeleteRegister = async (userId) => {
+    if (!window.confirm('Delete this register?')) return
+
+    try {
+      setError('')
+      await apiRequest(`/admin/users/${userId}`, {
+        method: 'DELETE',
+      })
+      if (editingRegisterId === userId) {
+        handleCancelRegisterEdit()
+      }
+      await loadAdminData()
+    } catch (err) {
+      setError(err.message || 'Failed to delete register')
+    }
+  }
+
+  const handleDeleteApplication = async (applicationId) => {
+    if (!window.confirm('Delete this application?')) return
+
+    try {
+      setError('')
+      setApplicationNotice('')
       await apiRequest(`/admin/applications/${applicationId}`, {
+        method: 'DELETE',
+      })
+      if (editingApplicationId === applicationId) {
+        handleCancelApplicationEdit()
+      }
+      await loadAdminData()
+      setApplicationNotice('Application deleted successfully.')
+    } catch (err) {
+      if (String(err.message || '').includes('404')) {
+        setApplications((current) => current.filter((application) => application._id !== applicationId))
+        if (editingApplicationId === applicationId) {
+          handleCancelApplicationEdit()
+        }
+        setApplicationNotice('Application removed from this dashboard. Deploy the backend DELETE route to delete it permanently from the database.')
+        return
+      }
+
+      setError(err.message || 'Failed to delete application')
+    }
+  }
+
+  const handleApplicationStatus = async (application, status) => {
+    try {
+      setError('')
+      setApplicationNotice('')
+      const data = await apiRequest(`/admin/applications/${application._id}`, {
         method: 'PUT',
         body: JSON.stringify({ status }),
       })
       await loadAdminData()
+      const updatedApplication = data.application || { ...application, status }
+
+      if (status === 'reviewing') {
+        setApplicationNotice(getReviewMessage(updatedApplication))
+      }
+
+      if (status === 'shortlisted') {
+        setApplicationNotice(`${updatedApplication.fullName || 'Candidate'} marked as shortlisted.`)
+      }
     } catch (err) {
       setError(err.message || 'Failed to update application')
     }
@@ -355,20 +588,113 @@ function AdminDashboard() {
     }
   }
 
+  const handleCreateEmployee = async (event) => {
+    event.preventDefault()
+
+    try {
+      setCreatingEmployee(true)
+      setError('')
+      const data = await apiRequest('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...employeeForm,
+          role: 'employee',
+        }),
+      })
+      setEmployeeForm(emptyEmployeeForm)
+      authStorage.setSession(data.token, data.user)
+      navigate('/employee')
+    } catch (err) {
+      setError(err.message || 'Failed to register employee')
+    } finally {
+      setCreatingEmployee(false)
+    }
+  }
+
+  const handleEditEmployee = (employee) => {
+    setEditingEmployeeId(employee._id)
+    setEmployeeEditForm({
+      fullName: employee.fullName || '',
+      email: employee.email || '',
+      phone: employee.phone || '',
+      employeeId: employee.employeeId || '',
+      department: employee.department || '',
+      designation: employee.designation || '',
+      password: '',
+      confirmPassword: '',
+    })
+    setActiveView('employees')
+  }
+
+  const handleCancelEmployeeEdit = () => {
+    setEditingEmployeeId('')
+    setEmployeeEditForm(emptyEmployeeEditForm)
+  }
+
+  const handleSaveEmployee = async (event) => {
+    event.preventDefault()
+    if (!editingEmployeeId) return
+
+    try {
+      setError('')
+      await apiRequest(`/admin/employees/${editingEmployeeId}`, {
+        method: 'PUT',
+        body: JSON.stringify(employeeEditForm),
+      })
+      handleCancelEmployeeEdit()
+      await loadAdminData()
+    } catch (err) {
+      setError(err.message || 'Failed to update employee')
+    }
+  }
+
+  const handleDeleteEmployee = async (employeeId) => {
+    if (!window.confirm('Delete this employee?')) return
+
+    try {
+      setError('')
+      await apiRequest(`/admin/employees/${employeeId}`, {
+        method: 'DELETE',
+      })
+      if (editingEmployeeId === employeeId) {
+        handleCancelEmployeeEdit()
+      }
+      await loadAdminData()
+    } catch (err) {
+      setError(err.message || 'Failed to delete employee')
+    }
+  }
+
   const handleCreateDepartment = async (event) => {
     event.preventDefault()
 
     try {
       setError('')
-      await apiRequest('/admin/departments', {
-        method: 'POST',
+      await apiRequest(editingDepartmentId ? `/admin/departments/${editingDepartmentId}` : '/admin/departments', {
+        method: editingDepartmentId ? 'PUT' : 'POST',
         body: JSON.stringify(departmentForm),
       })
       setDepartmentForm({ name: '', description: '' })
+      setEditingDepartmentId('')
       await loadAdminData()
     } catch (err) {
-      setError(err.message || 'Failed to create department')
+      setError(err.message || 'Failed to save department')
     }
+  }
+
+  const handleEditDepartment = (department) => {
+    if (department.derived || String(department._id).startsWith('derived-')) return
+    setEditingDepartmentId(department._id)
+    setDepartmentForm({
+      name: department.name || '',
+      description: department.description || '',
+    })
+    setActiveView('departments')
+  }
+
+  const handleCancelDepartmentEdit = () => {
+    setEditingDepartmentId('')
+    setDepartmentForm({ name: '', description: '' })
   }
 
   const handleDeleteDepartment = async (departmentId) => {
@@ -695,6 +1021,10 @@ function AdminDashboard() {
                     <i className="bi bi-file-earmark-person-fill" aria-hidden="true"></i>
                     View Applications
                   </button>
+                  <button onClick={() => setActiveView('employee-register')} type="button">
+                    <i className="bi bi-person-plus-fill" aria-hidden="true"></i>
+                    Employee Register
+                  </button>
                   <button onClick={() => setActiveView('leaves')} type="button">
                     <i className="bi bi-calendar2-check-fill" aria-hidden="true"></i>
                     Review Leaves
@@ -726,34 +1056,136 @@ function AdminDashboard() {
         )}
 
         {activeView === 'registers' && (
-          <article className="admin-panel">
-            <div className="panel-heading">
-              <h2>Current Registers Data</h2>
-              <span>{filteredRegisters.length} Users</span>
-            </div>
-            <div className="register-table">
-              <div className="register-table-head">
-                <span>Name</span>
-                <span>Role</span>
-                <span>Contact</span>
-                <span>Department</span>
-                <span>Joined</span>
-              </div>
-              {filteredRegisters.map((user) => (
-                <div className="register-table-row" key={user._id}>
-                  <strong>{user.fullName}</strong>
-                  <span>{user.role}</span>
-                  <span>{user.email || user.phone}</span>
-                  <span>{user.department || user.industry || 'Unassigned'}</span>
-                  <span>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'New'}</span>
+          <section className="admin-content-grid">
+            {editingRegisterId && (
+              <article className="admin-panel">
+                <div className="panel-heading">
+                  <h2>Edit Register</h2>
+                  <span>Admin</span>
                 </div>
-              ))}
-            </div>
-          </article>
+                <form className="job-form" onSubmit={handleSaveRegister}>
+                  <select name="role" value={registerForm.role} onChange={handleRegisterChange}>
+                    <option value="employee">Employee</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <input name="fullName" placeholder="Full name" value={registerForm.fullName} onChange={handleRegisterChange} required />
+                  <input name="email" placeholder="Email address" type="email" value={registerForm.email} onChange={handleRegisterChange} required />
+                  <input name="phone" placeholder="Phone number" value={registerForm.phone} onChange={handleRegisterChange} required />
+                  <input name="employeeId" placeholder="Employee ID" value={registerForm.employeeId} onChange={handleRegisterChange} />
+                  <input name="department" placeholder="Department" value={registerForm.department} onChange={handleRegisterChange} />
+                  <input name="designation" placeholder="Designation" value={registerForm.designation} onChange={handleRegisterChange} />
+                  <input name="adminCode" placeholder="Admin code" value={registerForm.adminCode} onChange={handleRegisterChange} />
+                  <input name="companySize" placeholder="Company size" value={registerForm.companySize} onChange={handleRegisterChange} />
+                  <input name="industry" placeholder="Industry" value={registerForm.industry} onChange={handleRegisterChange} />
+                  <input name="password" placeholder="New password optional" type="password" value={registerForm.password} onChange={handleRegisterChange} />
+                  <input name="confirmPassword" placeholder="Confirm new password" type="password" value={registerForm.confirmPassword} onChange={handleRegisterChange} />
+                  <button className="primary-btn" type="submit">Update Register</button>
+                  <button className="secondary-btn" onClick={handleCancelRegisterEdit} type="button">Cancel Edit</button>
+                </form>
+              </article>
+            )}
+
+            <article className={`admin-panel ${editingRegisterId ? '' : 'wide'}`}>
+              <div className="panel-heading">
+                <h2>Current Registers Data</h2>
+                <span>{filteredRegisters.length} Users</span>
+              </div>
+              <div className="register-table manage-register-table">
+                <div className="register-table-head">
+                  <span>Name</span>
+                  <span>Role</span>
+                  <span>Contact</span>
+                  <span>Department</span>
+                  <span>Joined</span>
+                  <span>Actions</span>
+                </div>
+                {filteredRegisters.map((user) => (
+                  <div className="register-table-row" key={user._id}>
+                    <strong>{user.fullName}</strong>
+                    <span>{user.role}</span>
+                    <span>{user.email || user.phone}</span>
+                    <span>{user.department || user.industry || 'Unassigned'}</span>
+                    <span>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'New'}</span>
+                    <div className="admin-row-actions">
+                      <button onClick={() => handleEditRegister(user)} title="Edit register" type="button">
+                        <i className="bi bi-pencil-square" aria-hidden="true"></i>
+                      </button>
+                      <button onClick={() => handleDeleteRegister(user._id)} title="Delete register" type="button">
+                        <i className="bi bi-trash3" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
+        )}
+
+        {activeView === 'employee-register' && (
+          <section className="admin-content-grid">
+            <article className="admin-panel">
+              <div className="panel-heading">
+                <h2>Employee Register</h2>
+                <span>{creatingEmployee ? 'Creating' : 'Admin'}</span>
+              </div>
+              <form className="job-form" onSubmit={handleCreateEmployee}>
+                <input name="fullName" placeholder="Full name" value={employeeForm.fullName} onChange={handleEmployeeChange} required />
+                <input name="email" placeholder="Email address" type="email" value={employeeForm.email} onChange={handleEmployeeChange} required />
+                <input name="phone" placeholder="Phone number" value={employeeForm.phone} onChange={handleEmployeeChange} required />
+                <input name="employeeId" placeholder="Employee ID" value={employeeForm.employeeId} onChange={handleEmployeeChange} />
+                <input name="department" placeholder="Department" value={employeeForm.department} onChange={handleEmployeeChange} />
+                <input name="designation" placeholder="Designation" value={employeeForm.designation} onChange={handleEmployeeChange} />
+                <input name="password" placeholder="Employee password" type="password" value={employeeForm.password} onChange={handleEmployeeChange} required />
+                <input name="confirmPassword" placeholder="Confirm password" type="password" value={employeeForm.confirmPassword} onChange={handleEmployeeChange} required />
+                <button className="primary-btn" disabled={creatingEmployee} type="submit">
+                  {creatingEmployee ? 'Creating Employee...' : 'Register Employee'}
+                </button>
+              </form>
+            </article>
+
+            <article className="admin-panel">
+              <div className="panel-heading">
+                <h2>Employee Login</h2>
+                <span>Saved Accounts</span>
+              </div>
+              <div className="register-list compact">
+                {employees.slice(0, 6).map((employee) => (
+                  <div className="register-row" key={employee._id}>
+                    <b>{employee.fullName}</b>
+                    <span>{employee.email}</span>
+                    <em>{employee.employeeId || 'Employee'}</em>
+                  </div>
+                ))}
+                {!employees.length && <p className="empty-state">Registered employees will appear here.</p>}
+              </div>
+            </article>
+          </section>
         )}
 
         {activeView === 'employees' && (
-          <article className="admin-panel">
+          <section className="admin-content-grid">
+            {editingEmployeeId && (
+              <article className="admin-panel">
+                <div className="panel-heading">
+                  <h2>Edit Employee</h2>
+                  <span>Admin</span>
+                </div>
+                <form className="job-form" onSubmit={handleSaveEmployee}>
+                  <input name="fullName" placeholder="Full name" value={employeeEditForm.fullName} onChange={handleEmployeeEditChange} required />
+                  <input name="email" placeholder="Email address" type="email" value={employeeEditForm.email} onChange={handleEmployeeEditChange} required />
+                  <input name="phone" placeholder="Phone number" value={employeeEditForm.phone} onChange={handleEmployeeEditChange} required />
+                  <input name="employeeId" placeholder="Employee ID" value={employeeEditForm.employeeId} onChange={handleEmployeeEditChange} />
+                  <input name="department" placeholder="Department" value={employeeEditForm.department} onChange={handleEmployeeEditChange} />
+                  <input name="designation" placeholder="Designation" value={employeeEditForm.designation} onChange={handleEmployeeEditChange} />
+                  <input name="password" placeholder="New password optional" type="password" value={employeeEditForm.password} onChange={handleEmployeeEditChange} />
+                  <input name="confirmPassword" placeholder="Confirm new password" type="password" value={employeeEditForm.confirmPassword} onChange={handleEmployeeEditChange} />
+                  <button className="primary-btn" type="submit">Update Employee</button>
+                  <button className="secondary-btn" onClick={handleCancelEmployeeEdit} type="button">Cancel Edit</button>
+                </form>
+              </article>
+            )}
+
+          <article className={`admin-panel ${editingEmployeeId ? '' : 'wide'}`}>
             <div className="panel-heading">
               <h2>Employees</h2>
               <span>{employees.length} Team Members</span>
@@ -774,10 +1206,20 @@ function AdminDashboard() {
                     <p>{employee.department || 'Unassigned'} · {employee.email}</p>
                   </div>
                   <em>{employee.employeeId || 'No ID'}</em>
+                  <div className="admin-row-actions employee-card-actions">
+                    <button onClick={() => handleEditEmployee(employee)} title="Edit employee" type="button">
+                      <i className="bi bi-pencil-square" aria-hidden="true"></i>
+                    </button>
+                    <button onClick={() => handleDeleteEmployee(employee._id)} title="Delete employee" type="button">
+                      <i className="bi bi-trash3" aria-hidden="true"></i>
+                    </button>
+                  </div>
                 </article>
               ))}
+              {!employees.length && <p className="empty-state">Registered employees will appear here.</p>}
             </div>
           </article>
+          </section>
         )}
 
         {activeView === 'leaves' && (
@@ -887,47 +1329,100 @@ function AdminDashboard() {
         )}
 
         {activeView === 'applications' && (
-          <article className="admin-panel">
-            <div className="panel-heading">
-              <h2>Job Applications</h2>
-              <span>{applications.length} Submitted</span>
-            </div>
-            <div className="application-list">
-              {applications.map((application) => (
-                <div className="application-card" key={application._id}>
-                  <div>
-                    <strong>{application.fullName}</strong>
-                    <span>{application.jobTitle}</span>
-                    <p>{application.email} | {application.phone}</p>
-                    {application.coverLetter && <small>{application.coverLetter}</small>}
-                  </div>
-                  <div className="application-meta">
-                    <b>{application.experience || 'Experience not added'}</b>
-                    {application.resumeFile && (
-                      <a href={application.resumeFile} download={application.resumeFileName || 'resume'}>
-                        Resume
-                      </a>
-                    )}
-                    {application.portfolio && (
-                      <a href={application.portfolio} rel="noreferrer" target="_blank">
-                        Portfolio
-                      </a>
-                    )}
-                  </div>
-                  <select
-                    value={application.status}
-                    onChange={(event) => handleApplicationStatus(application._id, event.target.value)}
-                  >
+          <section className="admin-content-grid application-admin-grid">
+            {editingApplicationId && (
+              <article className="admin-panel">
+                <div className="panel-heading">
+                  <h2>Edit Application</h2>
+                  <span>Admin</span>
+                </div>
+                <form className="job-form" onSubmit={handleSaveApplication}>
+                  <input name="fullName" placeholder="Full name" value={applicationForm.fullName} onChange={handleApplicationEditChange} required />
+                  <input name="email" placeholder="Email address" type="email" value={applicationForm.email} onChange={handleApplicationEditChange} required />
+                  <input name="phone" placeholder="Phone number" value={applicationForm.phone} onChange={handleApplicationEditChange} required />
+                  <input name="jobTitle" placeholder="Job title" value={applicationForm.jobTitle} onChange={handleApplicationEditChange} required />
+                  <input name="experience" placeholder="Experience" value={applicationForm.experience} onChange={handleApplicationEditChange} />
+                  <input name="portfolio" placeholder="Portfolio or LinkedIn" value={applicationForm.portfolio} onChange={handleApplicationEditChange} />
+                  <select name="status" value={applicationForm.status} onChange={handleApplicationEditChange}>
                     <option value="new">New</option>
                     <option value="reviewing">Reviewing</option>
                     <option value="shortlisted">Shortlisted</option>
                     <option value="rejected">Rejected</option>
                   </select>
-                </div>
-              ))}
-              {!applications.length && <p className="empty-state">Applications from the Careers page will appear here.</p>}
-            </div>
-          </article>
+                  <textarea name="coverLetter" placeholder="Short message" value={applicationForm.coverLetter} onChange={handleApplicationEditChange}></textarea>
+                  <button className="primary-btn" type="submit">Update Application</button>
+                  <button className="secondary-btn" onClick={handleCancelApplicationEdit} type="button">Cancel Edit</button>
+                </form>
+              </article>
+            )}
+
+            <article className={`admin-panel ${editingApplicationId ? '' : 'wide'}`}>
+              <div className="panel-heading">
+                <h2>Job Applications</h2>
+                <span>{applications.length} Submitted</span>
+              </div>
+
+              {applicationNotice && <p className="admin-success-note">{applicationNotice}</p>}
+
+              <div className="application-list">
+                {applications.map((application) => {
+                  return (
+                    <div className="application-card enhanced-application-card" key={application._id}>
+                      <div className="application-main">
+                        <div className="application-avatar">
+                          {(application.fullName || 'A').slice(0, 1).toUpperCase()}
+                        </div>
+                        <div>
+                          <strong>{application.fullName}</strong>
+                          <span>{application.jobTitle}</span>
+                          <p>{application.email} | {application.phone}</p>
+                          {application.coverLetter && <small>{application.coverLetter}</small>}
+                        </div>
+                      </div>
+
+                      <div className="application-meta">
+                        <b>{application.experience || 'Experience not added'}</b>
+                        <em className={`application-status-badge status-${application.status || 'new'}`}>
+                          {application.status || 'new'}
+                        </em>
+                        {application.resumeFile && (
+                          <a href={application.resumeFile} download={application.resumeFileName || 'resume'}>
+                            Resume
+                          </a>
+                        )}
+                        {application.portfolio && (
+                          <a href={application.portfolio} rel="noreferrer" target="_blank">
+                            Portfolio
+                          </a>
+                        )}
+                      </div>
+
+                      <div className="application-controls">
+                        <select
+                          value={application.status}
+                          onChange={(event) => handleApplicationStatus(application, event.target.value)}
+                        >
+                          <option value="new">New</option>
+                          <option value="reviewing">Reviewing</option>
+                          <option value="shortlisted">Shortlisted</option>
+                          <option value="rejected">Rejected</option>
+                        </select>
+                        <div className="admin-row-actions application-actions">
+                          <button onClick={() => handleEditApplication(application)} title="Edit application" type="button">
+                            <i className="bi bi-pencil-square" aria-hidden="true"></i>
+                          </button>
+                          <button onClick={() => handleDeleteApplication(application._id)} title="Delete application" type="button">
+                            <i className="bi bi-trash3" aria-hidden="true"></i>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {!applications.length && <p className="empty-state">Applications from the Careers page will appear here.</p>}
+              </div>
+            </article>
+          </section>
         )}
 
         {activeView === 'projects' && (
@@ -1018,13 +1513,16 @@ function AdminDashboard() {
           <section className="admin-content-grid">
             <article className="admin-panel">
               <div className="panel-heading">
-                <h2>Add Department</h2>
-                <span>Admin</span>
+                <h2>{editingDepartmentId ? 'Edit Department' : 'Add Department'}</h2>
+                <span>{editingDepartmentId ? 'Editing' : 'Admin'}</span>
               </div>
               <form className="job-form" onSubmit={handleCreateDepartment}>
                 <input name="name" placeholder="Department name, e.g. Accountant, Sales" value={departmentForm.name} onChange={handleDepartmentChange} required />
                 <textarea name="description" placeholder="Department notes" value={departmentForm.description} onChange={handleDepartmentChange}></textarea>
-                <button className="primary-btn" type="submit">Add Department</button>
+                <button className="primary-btn" type="submit">{editingDepartmentId ? 'Update Department' : 'Add Department'}</button>
+                {editingDepartmentId && (
+                  <button className="secondary-btn" onClick={handleCancelDepartmentEdit} type="button">Cancel Edit</button>
+                )}
               </form>
             </article>
 
@@ -1041,10 +1539,14 @@ function AdminDashboard() {
                     <span>{department.employeeCount ?? registerDepartmentCounts[department.name] ?? 0} registered</span>
                     {department.description && <p>{department.description}</p>}
                     {!department.derived && (
-                      <button onClick={() => handleDeleteDepartment(department._id)} type="button">
-                        <i className="bi bi-trash3" aria-hidden="true"></i>
-                        Delete
-                      </button>
+                      <div className="admin-row-actions department-actions">
+                        <button onClick={() => handleEditDepartment(department)} title="Edit department" type="button">
+                          <i className="bi bi-pencil-square" aria-hidden="true"></i>
+                        </button>
+                        <button onClick={() => handleDeleteDepartment(department._id)} title="Delete department" type="button">
+                          <i className="bi bi-trash3" aria-hidden="true"></i>
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}

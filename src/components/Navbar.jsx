@@ -10,7 +10,7 @@ const navItems = [
   ['Why Us', '/why-us'],
   ['Contact', '/contact'],
   ['Register', '/register'],
-  // ['Login', '/login'],
+  ['Login', '/login'],
 ]
 
 function Navbar() {
