@@ -3446,6 +3446,22 @@
   background: #f8fbff;
 }
 
+.employee-dashboard-link {
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.employee-dashboard-link:hover {
+  border-color: rgba(111, 182, 83, 0.72);
+  box-shadow: 0 14px 30px rgba(23, 67, 111, 0.12);
+  transform: translateY(-2px);
+}
+
+.employee-dashboard-link:focus-visible {
+  outline: 3px solid rgba(111, 182, 83, 0.35);
+  outline-offset: 3px;
+}
+
 .employee-admin-avatar {
   display: grid;
   width: 52px;
@@ -3712,6 +3728,39 @@
 .employee-workspace {
   min-width: 0;
   padding: clamp(24px, 4vw, 44px);
+}
+
+.employee-admin-preview-note {
+  align-items: center;
+  background: #eef7ea;
+  border: 1px solid rgba(111, 182, 83, 0.42);
+  border-radius: 14px;
+  color: var(--brand-deep);
+  display: flex;
+  font-weight: 850;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+}
+
+.employee-admin-preview-note i {
+  color: #4b963d;
+}
+
+.attendance-action-card .employee-read-only-label {
+  align-self: center;
+  background: #eaf2f8;
+  border-radius: 999px;
+  color: var(--brand-deep);
+  padding: 9px 13px;
+}
+
+.employee-profile-form input:disabled,
+.employee-profile-form textarea:disabled {
+  background: #f2f6f9;
+  color: #40566b;
+  cursor: default;
+  opacity: 1;
 }
 
 .employee-dashboard-topbar {

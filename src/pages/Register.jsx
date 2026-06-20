@@ -121,6 +121,16 @@ function Register() {
       return;
     }
 
+    if (event.target.name === "experience") {
+      const digits = event.target.value.replace(/\D/g, "").slice(0, 2);
+      setFormData((current) => ({
+        ...current,
+        experience: digits,
+      }));
+      setStatus("");
+      return;
+    }
+
     setFormData((current) => ({
       ...current,
       [event.target.name]: event.target.value,
@@ -793,6 +803,7 @@ function Register() {
                       type="tel"
                       name="phone"
                       inputMode="numeric"
+                      pattern="\d{10}"
                       maxLength="10"
                       placeholder="10 digit mobile number"
                       value={phoneDigits}
@@ -808,7 +819,10 @@ function Register() {
                     id="experience"
                     type="text"
                     name="experience"
-                    placeholder="Example: 2 years"
+                    inputMode="numeric"
+                    pattern="\d{1,2}"
+                    maxLength="2"
+                    placeholder="Years of experience"
                     value={formData.experience}
                     onChange={handleChange}
                   />

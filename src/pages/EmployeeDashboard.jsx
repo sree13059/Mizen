@@ -1,5 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiRequest, authStorage } from '../api'
 import logo from '../assets/images/logo.jpg'
 
@@ -24,10 +24,16 @@ const getWorkDate = () => new Date().toISOString().slice(0, 10)
 
 function EmployeeDashboard() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const videoRef = useRef(null)
   const storedUser = authStorage.getUser()
+  const token = authStorage.getToken()
+  const employeeId = searchParams.get('employeeId') || ''
+  const isEmployee = Boolean(token && (storedUser?.role === 'employee' || localStorage.getItem('mizenRole') === 'employee'))
+  const isAdminPreview = Boolean(token && storedUser?.role === 'admin' && employeeId)
+  const hasDashboardAccess = isEmployee || isAdminPreview
   const [activeView, setActiveView] = useState('overview')
-  const [user, setUser] = useState(storedUser)
+  const [user, setUser] = useState(isAdminPreview ? null : storedUser)
   const [company, setCompany] = useState(null)
   const [leaves, setLeaves] = useState([])
   const [attendance, setAttendance] = useState([])
@@ -51,9 +57,33 @@ function EmployeeDashboard() {
   const [cameraAction, setCameraAction] = useState('')
   const [error, setError] = useState('')
 
-  const isEmployee = authStorage.getToken() && (storedUser?.role === 'employee' || localStorage.getItem('mizenRole') === 'employee')
+  const fetchEmployeeData = useCallback(async () => {
+    if (isAdminPreview) {
+      const [employeesData, companyData, leavesData, attendanceData] = await Promise.all([
+        apiRequest('/admin/employees'),
+        apiRequest('/admin/company'),
+        apiRequest('/admin/leaves'),
+        apiRequest('/admin/attendance'),
+      ])
+      const selectedEmployee = (employeesData.employees || []).find(
+        (employee) => String(employee._id || employee.id) === employeeId,
+      )
 
-  const fetchEmployeeData = async () => {
+      if (!selectedEmployee) {
+        throw new Error('Employee not found')
+      }
+
+      const belongsToSelectedEmployee = (entry) =>
+        String(entry.employee?._id || entry.employee?.id || entry.employee) === employeeId
+
+      return {
+        nextUser: { ...selectedEmployee, id: selectedEmployee._id || selectedEmployee.id },
+        nextCompany: companyData.company || null,
+        nextLeaves: (leavesData.leaves || []).filter(belongsToSelectedEmployee),
+        nextAttendance: (attendanceData.attendance || []).filter(belongsToSelectedEmployee),
+      }
+    }
+
     const [profileData, companyData, leavesData, attendanceData] = await Promise.all([
       apiRequest('/auth/me'),
       apiRequest('/admin/company'),
@@ -67,7 +97,7 @@ function EmployeeDashboard() {
       nextLeaves: leavesData.leaves || [],
       nextAttendance: attendanceData.attendance || [],
     }
-  }
+  }, [employeeId, isAdminPreview])
 
   const applyEmployeeData = ({ nextUser, nextCompany, nextLeaves, nextAttendance }) => {
     setUser(nextUser)
@@ -89,7 +119,7 @@ function EmployeeDashboard() {
   }
 
   useEffect(() => {
-    if (!isEmployee) return undefined
+    if (!hasDashboardAccess) return undefined
 
     let isActive = true
 
@@ -113,7 +143,7 @@ function EmployeeDashboard() {
     return () => {
       isActive = false
     }
-  }, [isEmployee])
+  }, [fetchEmployeeData, hasDashboardAccess])
 
   useEffect(() => {
     if (videoRef.current && cameraStream) {
@@ -162,6 +192,7 @@ function EmployeeDashboard() {
 
   const handleProfileSave = async (event) => {
     event.preventDefault()
+    if (isAdminPreview) return
 
     try {
       setSavingProfile(true)
@@ -182,6 +213,7 @@ function EmployeeDashboard() {
 
   const handleLeaveSubmit = async (event) => {
     event.preventDefault()
+    if (isAdminPreview) return
 
     try {
       setSavingLeave(true)
@@ -207,6 +239,8 @@ function EmployeeDashboard() {
   }
 
   const openAttendanceCamera = async (action) => {
+    if (isAdminPreview) return
+
     try {
       setError('')
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -274,11 +308,16 @@ function EmployeeDashboard() {
   }
 
   const handleLogout = () => {
+    if (isAdminPreview) {
+      navigate('/admin')
+      return
+    }
+
     authStorage.clearSession()
     navigate('/login')
   }
 
-  if (!isEmployee) {
+  if (!hasDashboardAccess) {
     return (
       <main className="employee-locked">
         <section>
@@ -300,7 +339,7 @@ function EmployeeDashboard() {
           <img src={logo} alt="Mizen Tech Solutions logo" />
           <span>
             <strong>Mizen</strong>
-            <small>Employee</small>
+            <small>{isAdminPreview ? 'Admin Preview' : 'Employee'}</small>
           </span>
         </Link>
 
@@ -327,12 +366,19 @@ function EmployeeDashboard() {
         </nav>
 
         <button className="employee-logout" onClick={handleLogout} type="button">
-          <i className="bi bi-box-arrow-right" aria-hidden="true"></i>
-          Logout
+          <i className={`bi ${isAdminPreview ? 'bi-arrow-left' : 'bi-box-arrow-right'}`} aria-hidden="true"></i>
+          {isAdminPreview ? 'Back to Admin' : 'Logout'}
         </button>
       </aside>
 
       <section className="employee-workspace">
+        {isAdminPreview && (
+          <div className="employee-admin-preview-note">
+            <i className="bi bi-eye-fill" aria-hidden="true"></i>
+            <span>You are viewing this employee dashboard as admin. Employee actions are read-only.</span>
+          </div>
+        )}
+
         <div className="employee-dashboard-topbar">
           <button className="employee-corner-profile" onClick={() => setActiveView('profile')} type="button">
             {user?.profilePhoto ? (
@@ -350,8 +396,8 @@ function EmployeeDashboard() {
             <p>{company?.description || 'Track attendance, request leave, and keep your employee details up to date.'}</p>
           </div>
           <button className="employee-edit-button" onClick={() => setActiveView('profile')} type="button">
-            <i className="bi bi-pencil-square" aria-hidden="true"></i>
-            Edit Profile
+            <i className={`bi ${isAdminPreview ? 'bi-person-vcard-fill' : 'bi-pencil-square'}`} aria-hidden="true"></i>
+            {isAdminPreview ? 'View Profile' : 'Edit Profile'}
           </button>
         </header>
 
@@ -386,7 +432,9 @@ function EmployeeDashboard() {
                     <strong>{todayAttendance ? formatTime(todayAttendance.logoutAt) : 'Pending'}</strong>
                     <span>Logout time</span>
                   </div>
-                  {activeAttendance ? (
+                  {isAdminPreview ? (
+                    <span className="employee-read-only-label">Read only</span>
+                  ) : activeAttendance ? (
                     <button disabled={savingAttendance} onClick={() => openAttendanceCamera('logout')} type="button">Logout</button>
                   ) : (
                     <button disabled={savingAttendance} onClick={() => openAttendanceCamera('login')} type="button">Login</button>
@@ -429,7 +477,9 @@ function EmployeeDashboard() {
                 <strong>{activeAttendance ? formatTime(activeAttendance.loginAt) : 'Start your day'}</strong>
                 <span>{activeAttendance ? 'Current login' : 'Attendance login'}</span>
               </div>
-              {activeAttendance ? (
+              {isAdminPreview ? (
+                <span className="employee-read-only-label">Read only</span>
+              ) : activeAttendance ? (
                 <button disabled={savingAttendance} onClick={() => openAttendanceCamera('logout')} type="button">Logout</button>
               ) : (
                 <button disabled={savingAttendance} onClick={() => openAttendanceCamera('login')} type="button">Login</button>
@@ -473,24 +523,28 @@ function EmployeeDashboard() {
           <section className="admin-content-grid">
             <article className="employee-panel">
               <div className="panel-heading">
-                <h2>Request Leave</h2>
-                <span>{savingLeave ? 'Submitting' : 'Employee'}</span>
+                <h2>{isAdminPreview ? 'Leave Access' : 'Request Leave'}</h2>
+                <span>{isAdminPreview ? 'Read Only' : (savingLeave ? 'Submitting' : 'Employee')}</span>
               </div>
-              <form className="employee-profile-form" onSubmit={handleLeaveSubmit}>
-                <select name="type" value={leaveForm.type} onChange={handleLeaveChange}>
-                  <option value="casual">Casual Leave</option>
-                  <option value="sick">Sick Leave</option>
-                  <option value="earned">Earned Leave</option>
-                  <option value="unpaid">Unpaid Leave</option>
-                  <option value="other">Other</option>
-                </select>
-                <input name="fromDate" type="date" value={leaveForm.fromDate} onChange={handleLeaveChange} required />
-                <input name="toDate" type="date" value={leaveForm.toDate} onChange={handleLeaveChange} required />
-                <textarea className="span-2" name="reason" placeholder="Reason" value={leaveForm.reason} onChange={handleLeaveChange} required></textarea>
-                <button className="primary-btn span-2" disabled={savingLeave} type="submit">
-                  {savingLeave ? 'Submitting...' : 'Submit Leave'}
-                </button>
-              </form>
+              {isAdminPreview ? (
+                <p className="empty-state">Return to the admin dashboard to manage this employee's leave requests.</p>
+              ) : (
+                <form className="employee-profile-form" onSubmit={handleLeaveSubmit}>
+                  <select name="type" value={leaveForm.type} onChange={handleLeaveChange}>
+                    <option value="casual">Casual Leave</option>
+                    <option value="sick">Sick Leave</option>
+                    <option value="earned">Earned Leave</option>
+                    <option value="unpaid">Unpaid Leave</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <input name="fromDate" type="date" value={leaveForm.fromDate} onChange={handleLeaveChange} required />
+                  <input name="toDate" type="date" value={leaveForm.toDate} onChange={handleLeaveChange} required />
+                  <textarea className="span-2" name="reason" placeholder="Reason" value={leaveForm.reason} onChange={handleLeaveChange} required></textarea>
+                  <button className="primary-btn span-2" disabled={savingLeave} type="submit">
+                    {savingLeave ? 'Submitting...' : 'Submit Leave'}
+                  </button>
+                </form>
+              )}
             </article>
 
             <article className="employee-panel">
@@ -519,22 +573,24 @@ function EmployeeDashboard() {
         {activeView === 'profile' && (
           <article className="employee-panel">
             <div className="panel-heading">
-              <h2>Edit Profile</h2>
-              <span>{savingProfile ? 'Saving' : 'Editable'}</span>
+              <h2>{isAdminPreview ? 'Employee Profile' : 'Edit Profile'}</h2>
+              <span>{isAdminPreview ? 'Read Only' : (savingProfile ? 'Saving' : 'Editable')}</span>
             </div>
             <form className="employee-profile-form" onSubmit={handleProfileSave}>
-              <input name="fullName" placeholder="Full name" value={profileForm.fullName} onChange={handleProfileChange} />
-              <input name="phone" placeholder="Phone" value={profileForm.phone} onChange={handleProfileChange} />
-              <input name="employeeId" placeholder="Employee ID" value={profileForm.employeeId} onChange={handleProfileChange} />
-              <input name="department" placeholder="Department" value={profileForm.department} onChange={handleProfileChange} />
-              <input name="designation" placeholder="Designation" value={profileForm.designation} onChange={handleProfileChange} />
-              <input name="linkedIn" placeholder="LinkedIn URL" value={profileForm.linkedIn} onChange={handleProfileChange} />
-              <input className="span-2" name="skills" placeholder="Skills, comma separated" value={profileForm.skills} onChange={handleProfileChange} />
-              <textarea name="address" placeholder="Address" value={profileForm.address} onChange={handleProfileChange}></textarea>
-              <textarea name="bio" placeholder="Short bio" value={profileForm.bio} onChange={handleProfileChange}></textarea>
-              <button className="primary-btn span-2" disabled={savingProfile} type="submit">
-                {savingProfile ? 'Saving Profile...' : 'Save Profile'}
-              </button>
+              <input disabled={isAdminPreview} name="fullName" placeholder="Full name" value={profileForm.fullName} onChange={handleProfileChange} />
+              <input disabled={isAdminPreview} name="phone" placeholder="Phone" value={profileForm.phone} onChange={handleProfileChange} />
+              <input disabled={isAdminPreview} name="employeeId" placeholder="Employee ID" value={profileForm.employeeId} onChange={handleProfileChange} />
+              <input disabled={isAdminPreview} name="department" placeholder="Department" value={profileForm.department} onChange={handleProfileChange} />
+              <input disabled={isAdminPreview} name="designation" placeholder="Designation" value={profileForm.designation} onChange={handleProfileChange} />
+              <input disabled={isAdminPreview} name="linkedIn" placeholder="LinkedIn URL" value={profileForm.linkedIn} onChange={handleProfileChange} />
+              <input className="span-2" disabled={isAdminPreview} name="skills" placeholder="Skills, comma separated" value={profileForm.skills} onChange={handleProfileChange} />
+              <textarea disabled={isAdminPreview} name="address" placeholder="Address" value={profileForm.address} onChange={handleProfileChange}></textarea>
+              <textarea disabled={isAdminPreview} name="bio" placeholder="Short bio" value={profileForm.bio} onChange={handleProfileChange}></textarea>
+              {!isAdminPreview && (
+                <button className="primary-btn span-2" disabled={savingProfile} type="submit">
+                  {savingProfile ? 'Saving Profile...' : 'Save Profile'}
+                </button>
+              )}
             </form>
           </article>
         )}

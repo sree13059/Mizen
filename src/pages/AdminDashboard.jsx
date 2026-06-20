@@ -626,6 +626,19 @@ function AdminDashboard() {
     setActiveView('employees')
   }
 
+  const handleOpenEmployeeDashboard = (employee) => {
+    navigate(`/employee?employeeId=${encodeURIComponent(employee._id)}`)
+  }
+
+  const handleEmployeeCardKeyDown = (event, employee) => {
+    if (event.target !== event.currentTarget) return
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleOpenEmployeeDashboard(employee)
+    }
+  }
+
   const handleCancelEmployeeEdit = () => {
     setEditingEmployeeId('')
     setEmployeeEditForm(emptyEmployeeEditForm)
@@ -1150,7 +1163,15 @@ function AdminDashboard() {
               </div>
               <div className="register-list compact">
                 {employees.slice(0, 6).map((employee) => (
-                  <div className="register-row" key={employee._id}>
+                  <div
+                    aria-label={`Open ${employee.fullName}'s dashboard`}
+                    className="register-row employee-dashboard-link"
+                    key={employee._id}
+                    onClick={() => handleOpenEmployeeDashboard(employee)}
+                    onKeyDown={(event) => handleEmployeeCardKeyDown(event, employee)}
+                    role="button"
+                    tabIndex="0"
+                  >
                     <b>{employee.fullName}</b>
                     <span>{employee.email}</span>
                     <em>{employee.employeeId || 'Employee'}</em>
@@ -1192,7 +1213,15 @@ function AdminDashboard() {
             </div>
             <div className="employee-admin-grid">
               {employees.map((employee) => (
-                <article className="employee-admin-card" key={employee._id}>
+                <article
+                  aria-label={`Open ${employee.fullName}'s dashboard`}
+                  className="employee-admin-card employee-dashboard-link"
+                  key={employee._id}
+                  onClick={() => handleOpenEmployeeDashboard(employee)}
+                  onKeyDown={(event) => handleEmployeeCardKeyDown(event, employee)}
+                  role="button"
+                  tabIndex="0"
+                >
                   <div className="employee-admin-avatar">
                     {employee.profilePhoto ? (
                       <img src={employee.profilePhoto} alt="" />
@@ -1207,10 +1236,10 @@ function AdminDashboard() {
                   </div>
                   <em>{employee.employeeId || 'No ID'}</em>
                   <div className="admin-row-actions employee-card-actions">
-                    <button onClick={() => handleEditEmployee(employee)} title="Edit employee" type="button">
+                    <button onClick={(event) => { event.stopPropagation(); handleEditEmployee(employee) }} title="Edit employee" type="button">
                       <i className="bi bi-pencil-square" aria-hidden="true"></i>
                     </button>
-                    <button onClick={() => handleDeleteEmployee(employee._id)} title="Delete employee" type="button">
+                    <button onClick={(event) => { event.stopPropagation(); handleDeleteEmployee(employee._id) }} title="Delete employee" type="button">
                       <i className="bi bi-trash3" aria-hidden="true"></i>
                     </button>
                   </div>
