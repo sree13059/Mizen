@@ -38,11 +38,25 @@ const getPhoneDigits = (value) => {
 function Register() {
   const [searchParams] = useSearchParams();
   const resumeInputRef = useRef(null);
+  const successCloseRef = useRef(null);
   const [jobs, setJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [formData, setFormData] = useState(emptyApplication);
   const [status, setStatus] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!successMessage) return undefined;
+
+    successCloseRef.current?.focus();
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setSuccessMessage("");
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [successMessage]);
 
   useEffect(() => {
     let isActive = true;
@@ -218,7 +232,7 @@ function Register() {
         jobId: current.jobId,
         jobTitle: current.jobTitle,
       }));
-      setStatus(`Thank you, ${formData.fullName}. Your application has been submitted successfully.`);
+      setSuccessMessage(`Thank you, ${formData.fullName}. Your application has been submitted successfully.`);
     } catch (error) {
       setStatus(error.message || "Failed to submit application.");
     } finally {
@@ -602,7 +616,7 @@ function Register() {
   color:#b42318;
 }
 
-.register-btn{
+.apply-btn{
   align-items:center;
   background:linear-gradient(135deg, #17436f, #6fb653);
   border:0;
@@ -619,12 +633,12 @@ function Register() {
   width:100%;
 }
 
-.register-btn:hover{
+.apply-btn:hover{
   box-shadow:0 14px 28px rgba(23,67,111,.22);
   transform:translateY(-2px);
 }
 
-.register-btn:disabled{
+.apply-btn:disabled{
   cursor:not-allowed;
   opacity:.62;
   transform:none;
@@ -648,6 +662,81 @@ function Register() {
   background:#fff4f4;
   border:1px solid rgba(220,53,69,.26);
   color:#9d1f2e;
+}
+
+.application-success-popup{
+  align-items:center;
+  background:rgba(8, 29, 49, .68);
+  display:flex;
+  inset:0;
+  justify-content:center;
+  padding:20px;
+  position:fixed;
+  z-index:2000;
+}
+
+.application-success-dialog{
+  background:#fff;
+  border:1px solid rgba(111,182,83,.35);
+  border-radius:24px;
+  box-shadow:0 28px 80px rgba(8,29,49,.3);
+  max-width:470px;
+  padding:38px 32px 32px;
+  position:relative;
+  text-align:center;
+  width:100%;
+}
+
+.application-success-icon{
+  align-items:center;
+  background:#eaf7e8;
+  border-radius:999px;
+  color:#3d8d45;
+  display:flex;
+  font-size:42px;
+  height:82px;
+  justify-content:center;
+  margin:0 auto 20px;
+  width:82px;
+}
+
+.application-success-dialog h2{
+  color:#123c65;
+  font-size:1.75rem;
+  font-weight:900;
+  margin:0 0 12px;
+}
+
+.application-success-dialog p{
+  color:#5d7288;
+  line-height:1.65;
+  margin:0 0 24px;
+}
+
+.application-popup-close{
+  align-items:center;
+  background:#f2f6f9;
+  border:0;
+  border-radius:999px;
+  color:#123c65;
+  display:flex;
+  font-size:18px;
+  height:38px;
+  justify-content:center;
+  position:absolute;
+  right:16px;
+  top:16px;
+  width:38px;
+}
+
+.application-popup-done{
+  background:linear-gradient(135deg, #17436f, #6fb653);
+  border:0;
+  border-radius:13px;
+  color:#fff;
+  font-weight:900;
+  min-height:50px;
+  padding:12px 32px;
 }
 
 @media(max-width:900px){
@@ -686,7 +775,7 @@ function Register() {
 `}</style>
 
       <main className="application-page">
-        <section className="application-card" aria-label="Job application register">
+        <section className="application-card" aria-label="Job application form">
           <aside className="application-info">
             <span className="application-badge" style={{color:"white"}}>Job Application</span>
             <h1>Apply Now</h1>
@@ -722,8 +811,8 @@ function Register() {
 
           <section className="application-form-panel">
             <div className="application-heading">
-              <span>Candidate Register</span>
-              <h2>Job Application Register</h2>
+              <span>Candidate Application</span>
+              <h2>Apply for a Job</h2>
               <p>
                 This form is for candidates applying for jobs. Employee accounts
                 are created separately by admin.
@@ -739,7 +828,7 @@ function Register() {
             </div>
 
             {status && (
-              <p className={`application-status ${status.startsWith("Thank you") ? "success" : "error"}`}>
+              <p className="application-status error">
                 {status}
               </p>
             )}
@@ -881,14 +970,49 @@ function Register() {
                 ></textarea>
               </div>
 
-              <button className="register-btn" disabled={submitting || (!formData.jobId && !formData.jobTitle)} type="submit">
+              <button className="apply-btn" disabled={submitting || (!formData.jobId && !formData.jobTitle)} type="submit">
                 <i className="bi bi-send-fill" aria-hidden="true"></i>
-                {submitting ? "Submitting..." : "Submit Application"}
+                {submitting ? "Submitting..." : "Apply for this Job"}
               </button>
             </form>
           </section>
         </section>
       </main>
+
+      {successMessage && (
+        <div
+          className="application-success-popup"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSuccessMessage("");
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="application-success-title"
+            aria-modal="true"
+            className="application-success-dialog"
+            role="dialog"
+          >
+            <button
+              aria-label="Close confirmation"
+              className="application-popup-close"
+              onClick={() => setSuccessMessage("")}
+              ref={successCloseRef}
+              type="button"
+            >
+              <i className="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+            <div className="application-success-icon">
+              <i className="bi bi-check2-circle" aria-hidden="true"></i>
+            </div>
+            <h2 id="application-success-title">Application Submitted!</h2>
+            <p>{successMessage}</p>
+            <button className="application-popup-done" onClick={() => setSuccessMessage("")} type="button">
+              Done
+            </button>
+          </section>
+        </div>
+      )}
     </>
   );
 }

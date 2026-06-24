@@ -41,16 +41,12 @@ function Home() {
           </p>
 
           <div className="hero-actions">
-            <Link className="primary-btn hero-register-btn" to="/register">
+            <Link className="primary-btn hero-register-btn" to="/apply">
               Apply Now
               <span className="hero-register-arrow" aria-hidden="true">
                 →
               </span>
             </Link>
-
-            {/* <Link className="secondary-btn hero-register-outline" to="/login">
-              Already have an account?
-            </Link> */}
           </div>
         </div>
 

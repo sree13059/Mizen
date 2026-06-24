@@ -36,11 +36,11 @@ function Careers() {
 
   const openApplication = (job) => {
     if (job._id) {
-      navigate(`/register?jobId=${encodeURIComponent(job._id)}`)
+      navigate(`/apply?jobId=${encodeURIComponent(job._id)}`)
       return
     }
 
-    navigate(`/register?jobTitle=${encodeURIComponent(job.title)}`)
+    navigate(`/apply?jobTitle=${encodeURIComponent(job.title)}`)
   }
 
   return (

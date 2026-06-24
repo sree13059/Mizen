@@ -9,8 +9,7 @@ const navItems = [
   ['Careers', '/careers'],
   ['Why Us', '/why-us'],
   ['Contact', '/contact'],
-  ['Register', '/register'],
-  ['Login', '/login'],
+  ['Apply', '/apply'],
 ]
 
 function Navbar() {
